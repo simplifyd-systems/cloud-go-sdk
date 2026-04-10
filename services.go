@@ -2,8 +2,14 @@ package cloud
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/url"
+	"strings"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 // ServicesClient manages services within an environment.
@@ -254,4 +260,133 @@ func (s *ServicesClient) Ingress(svcSlug string) *IngressClient {
 		env:       s.env,
 		svc:       svcSlug,
 	}
+}
+
+// ── shell ─────────────────────────────────────────────────────────────────────
+
+// ConnectShell opens an interactive WebSocket shell to a running service
+// container. stdin and stdout are connected to the remote PTY. resizeCh
+// delivers terminal resize events; close it (or cancel ctx) to end the session.
+//
+// Blocks until the connection is closed, the context is cancelled, or an error
+// occurs.
+func (s *ServicesClient) ConnectShell(
+	ctx context.Context,
+	svcSlug string,
+	stdin io.Reader,
+	stdout io.Writer,
+	resizeCh <-chan TerminalSize,
+) error {
+	wsURL, err := s.shellWSURL(svcSlug)
+	if err != nil {
+		return fmt.Errorf("building shell URL: %w", err)
+	}
+
+	conn, _, err := websocket.DefaultDialer.DialContext(ctx, wsURL, nil)
+	if err != nil {
+		return fmt.Errorf("connecting to shell: %w", err)
+	}
+	defer conn.Close()
+
+	errc := make(chan error, 3)
+
+	// server → stdout
+	go func() {
+		for {
+			msgType, data, err := conn.ReadMessage()
+			if err != nil {
+				errc <- err
+				return
+			}
+			if msgType == websocket.BinaryMessage {
+				if _, err := stdout.Write(data); err != nil {
+					errc <- err
+					return
+				}
+			}
+		}
+	}()
+
+	// stdin → server (binary frames)
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, err := stdin.Read(buf)
+			if n > 0 {
+				if werr := conn.WriteMessage(websocket.BinaryMessage, buf[:n]); werr != nil {
+					errc <- werr
+					return
+				}
+			}
+			if err != nil {
+				if err == io.EOF {
+					err = nil
+				}
+				errc <- err
+				return
+			}
+		}
+	}()
+
+	// resize channel → server (text JSON frames)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				errc <- nil
+				return
+			case sz, ok := <-resizeCh:
+				if !ok {
+					errc <- nil
+					return
+				}
+				msg := shellResizeMsg{Type: "resize", Cols: sz.Cols, Rows: sz.Rows}
+				data, _ := json.Marshal(msg)
+				if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+					errc <- err
+					return
+				}
+			}
+		}
+	}()
+
+	select {
+	case <-ctx.Done():
+		conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+		return nil
+	case err := <-errc:
+		conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+		if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+			return nil
+		}
+		return err
+	}
+}
+
+// shellWSURL builds the wss:// (or ws://) URL for the shell endpoint, with the
+// auth token passed as a query parameter (browsers and WebSocket clients cannot
+// set custom headers during the upgrade).
+func (s *ServicesClient) shellWSURL(svcSlug string) (string, error) {
+	base := s.client.baseURL
+	var wsBase string
+	switch {
+	case strings.HasPrefix(base, "https://"):
+		wsBase = "wss://" + strings.TrimPrefix(base, "https://")
+	case strings.HasPrefix(base, "http://"):
+		wsBase = "ws://" + strings.TrimPrefix(base, "http://")
+	default:
+		wsBase = "wss://" + base
+	}
+
+	path := fmt.Sprintf("%s/v1/workspaces/%s/projects/%s/envs/%s/svcs/%s/shell",
+		wsBase, s.workspace, s.project, s.env, svcSlug)
+
+	u, err := url.Parse(path)
+	if err != nil {
+		return "", err
+	}
+	q := u.Query()
+	q.Set("jwt", s.client.token)
+	u.RawQuery = q.Encode()
+	return u.String(), nil
 }

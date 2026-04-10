@@ -350,6 +350,21 @@ type bulkSetVariablesRequest struct {
 	Variables []setVariableRequest `json:"variables"`
 }
 
+// ── Shell ─────────────────────────────────────────────────────────────────────
+
+// TerminalSize describes the dimensions of a terminal window.
+type TerminalSize struct {
+	Cols uint16 `json:"cols"`
+	Rows uint16 `json:"rows"`
+}
+
+// shellResizeMsg is the JSON frame sent to the server on terminal resize.
+type shellResizeMsg struct {
+	Type string `json:"type"`
+	Cols uint16 `json:"cols"`
+	Rows uint16 `json:"rows"`
+}
+
 // ── Token inputs ──────────────────────────────────────────────────────────────
 
 type createTokenRequest struct {
