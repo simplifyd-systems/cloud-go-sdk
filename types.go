@@ -113,6 +113,7 @@ const (
 	ServiceTypePostgres      ServiceType = "postgres"
 	ServiceTypeRedis         ServiceType = "redis"
 	ServiceTypeHTTPGateway   ServiceType = "http_gateway"
+	ServiceTypeS3Bucket      ServiceType = "s3_bucket"
 	ServiceTypeZerodataProxy ServiceType = "zerodata_proxy"
 )
 
@@ -227,6 +228,13 @@ type CreateServiceInput struct {
 	Docker   *DockerInput   `json:"docker_image_svc,omitempty"`
 	Postgres *PostgresInput `json:"postgres_svc,omitempty"`
 	Redis    *RedisInput    `json:"redis_svc,omitempty"`
+	S3Bucket *S3BucketInput `json:"s3_bucket_svc,omitempty"`
+}
+
+// S3BucketInput configures an S3-compatible bucket service on creation.
+type S3BucketInput struct {
+	Name   string `json:"name,omitempty"`
+	Region string `json:"region,omitempty"`
 }
 
 // DockerInput configures a Docker service on creation.
@@ -251,7 +259,8 @@ type RedisInput struct {
 }
 
 // UpdateServiceInput is the request body for patching a service.
-// Set Action to describe what is changing (e.g. "update_image", "update_resources").
+// Set Action to what is changing: "name", "vcpus", "memory", "image",
+// "start_command", or "registry_credentials".
 type UpdateServiceInput struct {
 	Action           string `json:"action"`
 	Name             string `json:"name,omitempty"`
@@ -329,10 +338,52 @@ type WorkspaceStats struct {
 	Members     int `json:"members"`
 }
 
+// UsageCosts is a cost breakdown in centiKobo (1/10000 Naira).
+type UsageCosts struct {
+	TotalCPUCost      int `json:"total_cpu_cost"`
+	TotalMemoryCost   int `json:"total_memory_cost"`
+	TotalStorageCost  int `json:"total_storage_cost"`
+	TotalDataCost     int `json:"total_data_cost"`
+	TotalZeroDataCost int `json:"total_zerodata_cost"`
+	TotalNetworkCost  int `json:"total_network_cost"`
+	TotalCost         int `json:"total_cost"`
+}
+
+// WorkspaceUsage is the current-month billing summary for a workspace.
+type WorkspaceUsage struct {
+	CurrentUsage                  UsageCosts `json:"current_usage"`
+	EstimatedUsage                UsageCosts `json:"estimated_usage"`
+	EstimatedMonthlyBurn          int64      `json:"estimated_monthly_burn"` // centiKobo
+	DaysOfRunwayLeft              int        `json:"days_of_runway_left"`    // -1 means unknown
+	WalletBalance                 int64      `json:"wallet_balance"`         // centiKobo
+	BillingSuspended              bool       `json:"billing_suspended"`
+	BillingNegativeBalanceAllowed bool       `json:"billing_negative_balance_allowed"`
+	Period                        string     `json:"period"`
+}
+
+// Transaction is a wallet transaction (funding or billing charge).
+type Transaction struct {
+	Slug              string    `json:"slug"`
+	Reference         string    `json:"reference"`
+	ProviderReference string    `json:"provider_reference"`
+	Status            string    `json:"status"`
+	Type              string    `json:"type"`
+	Amount            int64     `json:"amount"` // smallest currency unit
+	Currency          string    `json:"currency"`
+	Processor         string    `json:"processor"`
+	CreatedAt         time.Time `json:"created_at"`
+}
+
+type fundWorkspaceRequest struct {
+	Method string `json:"method"` // "paystack", "stripe", or "bank_transfer"
+	Amount int64  `json:"amount"` // smallest currency unit (kobo or cents)
+}
+
 // ── Workspace members inputs ──────────────────────────────────────────────────
 
 type addMembersRequest struct {
 	Emails []string `json:"emails"`
+	Role   string   `json:"role,omitempty"` // "owner", "developer" (default), or "billing"
 }
 
 type updateMemberRoleRequest struct {

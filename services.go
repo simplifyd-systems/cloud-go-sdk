@@ -145,6 +145,38 @@ func (s *ServicesClient) ActiveDeployment(ctx context.Context, svcSlug string) (
 	return &resp.Active, nil
 }
 
+// GetDeployment returns a single deployment by its slug.
+func (s *ServicesClient) GetDeployment(ctx context.Context, svcSlug, deploySlug string) (*Deployment, error) {
+	var dep Deployment
+	if err := s.client.get(ctx, s.svcPath(svcSlug)+"/deployments/"+deploySlug, &dep); err != nil {
+		return nil, err
+	}
+	return &dep, nil
+}
+
+// GetLogs fetches up to maxLines log lines from a deployment's SSE log stream,
+// stopping early when the stream ends or ctx is cancelled. The logs endpoint
+// only streams, so callers wanting a bounded snapshot should pass a context
+// with a timeout.
+func (s *ServicesClient) GetLogs(ctx context.Context, svcSlug, deploySlug string, maxLines int) ([]string, error) {
+	if maxLines <= 0 {
+		maxLines = 1000
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var lines []string
+	err := s.StreamLogs(ctx, svcSlug, deploySlug, func(line string) {
+		if len(lines) < maxLines {
+			lines = append(lines, line)
+			if len(lines) == maxLines {
+				cancel()
+			}
+		}
+	})
+	return lines, err
+}
+
 // StreamLogs streams SSE log lines from a deployment, calling lineFunc for each
 // line. Blocks until the stream ends or ctx is cancelled.
 func (s *ServicesClient) StreamLogs(ctx context.Context, svcSlug, deploySlug string, lineFunc func(string)) error {
@@ -155,6 +187,32 @@ func (s *ServicesClient) StreamLogs(ctx context.Context, svcSlug, deploySlug str
 // DiscardChangeset discards any pending (un-deployed) changes on the service.
 func (s *ServicesClient) DiscardChangeset(ctx context.Context, svcSlug string) error {
 	return s.client.delete(ctx, s.svcPath(svcSlug)+"/changeset", nil)
+}
+
+// ApproveChangeset approves the service's pending changeset, applying the
+// staged changes.
+func (s *ServicesClient) ApproveChangeset(ctx context.Context, svcSlug string) error {
+	return s.client.post(ctx, s.svcPath(svcSlug)+"/changeset/approve", nil, nil)
+}
+
+// ── TCP proxy ─────────────────────────────────────────────────────────────────
+
+// AddTCPProxy exposes a container port externally via a shared-IP TCP proxy.
+// Returns the provider response including the assigned public address/port.
+func (s *ServicesClient) AddTCPProxy(ctx context.Context, svcSlug string, port uint) (map[string]interface{}, error) {
+	var resp map[string]interface{}
+	body := struct {
+		Port uint `json:"port"`
+	}{Port: port}
+	if err := s.client.post(ctx, s.svcPath(svcSlug)+"/proxy", body, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// DeleteTCPProxy removes the TCP proxy for the given container port.
+func (s *ServicesClient) DeleteTCPProxy(ctx context.Context, svcSlug string, port uint) error {
+	return s.client.delete(ctx, fmt.Sprintf("%s/proxy/%d", s.svcPath(svcSlug), port), nil)
 }
 
 // ── convenience methods ───────────────────────────────────────────────────────
@@ -170,7 +228,7 @@ func (s *ServicesClient) DiscardChangeset(ctx context.Context, svcSlug string) e
 // pending changesets before deploying.
 func (s *ServicesClient) DeployImage(ctx context.Context, svcSlug, image, tag string, opts ...DeployOptions) (*Deployment, error) {
 	if _, err := s.Update(ctx, svcSlug, UpdateServiceInput{
-		Action: "update_image",
+		Action: "image",
 		Image:  image,
 		Tag:    tag,
 	}); err != nil {

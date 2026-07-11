@@ -56,6 +56,40 @@ func (w *WorkspaceClient) GetStats(ctx context.Context) (*WorkspaceStats, error)
 	return &stats, nil
 }
 
+// ── billing ───────────────────────────────────────────────────────────────────
+
+// Usage returns the current-month billing summary for the workspace
+// (requires the owner or billing role).
+func (w *WorkspaceClient) Usage(ctx context.Context) (*WorkspaceUsage, error) {
+	var u WorkspaceUsage
+	if err := w.client.get(ctx, w.base()+"/usage", &u); err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+// Transactions returns the workspace's wallet transactions
+// (requires the owner or billing role).
+func (w *WorkspaceClient) Transactions(ctx context.Context) ([]Transaction, error) {
+	var txns []Transaction
+	if err := w.client.get(ctx, w.base()+"/txns", &txns); err != nil {
+		return nil, err
+	}
+	return txns, nil
+}
+
+// Fund initiates a wallet top-up. method is "paystack", "stripe", or
+// "bank_transfer"; amount is in the smallest currency unit (kobo or cents).
+// Returns the provider response: a payment URL for paystack/stripe, or bank
+// account details for bank_transfer.
+func (w *WorkspaceClient) Fund(ctx context.Context, method string, amount int64) (map[string]interface{}, error) {
+	var resp map[string]interface{}
+	if err := w.client.post(ctx, w.base()+"/fund", fundWorkspaceRequest{Method: method, Amount: amount}, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // ── projects ──────────────────────────────────────────────────────────────────
 
 // ListProjects returns all projects in the workspace.
@@ -107,9 +141,15 @@ func (m *MembersClient) List(ctx context.Context) ([]WorkspaceMember, error) {
 	return members, nil
 }
 
-// Add invites users by email to the workspace.
+// Add invites users by email to the workspace with the default role (developer).
 func (m *MembersClient) Add(ctx context.Context, emails []string) error {
 	return m.client.post(ctx, m.base(), addMembersRequest{Emails: emails}, nil)
+}
+
+// AddWithRole invites users by email to the workspace with the given role.
+// Role must be one of "owner", "developer", or "billing".
+func (m *MembersClient) AddWithRole(ctx context.Context, emails []string, role string) error {
+	return m.client.post(ctx, m.base(), addMembersRequest{Emails: emails, Role: role}, nil)
 }
 
 // Remove removes a member from the workspace.
