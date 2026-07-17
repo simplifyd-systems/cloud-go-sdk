@@ -199,11 +199,14 @@ func (s *ServicesClient) ApproveChangeset(ctx context.Context, svcSlug string) e
 
 // AddTCPProxy exposes a container port externally via a shared-IP TCP proxy.
 // Returns the provider response including the assigned public address/port.
-func (s *ServicesClient) AddTCPProxy(ctx context.Context, svcSlug string, port uint) (map[string]interface{}, error) {
+// Optional allowedSourceRanges restrict which client IPs/CIDRs may connect
+// (bare IPs are treated as /32); none means open to all.
+func (s *ServicesClient) AddTCPProxy(ctx context.Context, svcSlug string, port uint, allowedSourceRanges ...string) (map[string]interface{}, error) {
 	var resp map[string]interface{}
 	body := struct {
-		Port uint `json:"port"`
-	}{Port: port}
+		Port                uint     `json:"port"`
+		AllowedSourceRanges []string `json:"allowed_source_ranges,omitempty"`
+	}{Port: port, AllowedSourceRanges: allowedSourceRanges}
 	if err := s.client.post(ctx, s.svcPath(svcSlug)+"/proxy", body, &resp); err != nil {
 		return nil, err
 	}

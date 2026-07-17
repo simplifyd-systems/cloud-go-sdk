@@ -56,6 +56,17 @@ func (i *IngressClient) Add(ctx context.Context, in AddIngressInput) (*IngressPo
 	return &port, nil
 }
 
+// SetSourceRanges replaces the client IP allowlist on a TCP/UDP ingress port.
+// Entries are IPs or CIDRs (bare IPs are treated as /32). An empty list opens
+// the port to all source IPs. Changes apply to the live LoadBalancer without
+// a redeploy.
+func (i *IngressClient) SetSourceRanges(ctx context.Context, ingressSlug string, ranges []string) error {
+	body := struct {
+		AllowedSourceRanges []string `json:"allowed_source_ranges"`
+	}{AllowedSourceRanges: ranges}
+	return i.client.put(ctx, i.base()+"/"+ingressSlug+"/source-ranges", body, nil)
+}
+
 // Delete removes an ingress port by its slug.
 func (i *IngressClient) Delete(ctx context.Context, ingressSlug string) error {
 	return i.client.delete(ctx, i.base()+"/"+ingressSlug, nil)

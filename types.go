@@ -189,6 +189,9 @@ type IngressPort struct {
 	Port        uint   `json:"port"`
 	VanityFQDN  string `json:"vanity_fqdn,omitempty"`
 	CustomFQDNs []FQDN `json:"custom_fqdns,omitempty"`
+	// AllowedSourceRanges is the client IP allowlist (CIDRs) enforced on the
+	// port's public LoadBalancer. Empty means open to all. TCP/UDP ports only.
+	AllowedSourceRanges []string `json:"allowed_source_ranges,omitempty"`
 }
 
 // FQDN is a custom domain attached to a service ingress port.
@@ -279,6 +282,9 @@ type AddIngressInput struct {
 	Protocol   string `json:"protocol"`
 	Port       int    `json:"port"`
 	CustomFQDN string `json:"custom_fqdn,omitempty"`
+	// AllowedSourceRanges restricts which client IPs/CIDRs may connect
+	// (TCP/UDP only). Bare IPs are treated as /32. Empty means open to all.
+	AllowedSourceRanges []string `json:"allowed_source_ranges,omitempty"`
 }
 
 // CreateConfigInput is the request body for creating a config file mount.
