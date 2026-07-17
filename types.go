@@ -70,10 +70,11 @@ type RegistryRepo struct {
 
 // Project groups environments under a workspace.
 type Project struct {
-	Slug      string    `json:"slug"`
-	Name      string    `json:"name"`
-	Workspace string    `json:"workspace"`
-	CreatedAt time.Time `json:"created_at"`
+	Slug        string    `json:"slug"`
+	Name        string    `json:"name"`
+	Workspace   string    `json:"workspace"`
+	NetworkSlug string    `json:"network_slug,omitempty"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // Token is a scoped project API token (sk_proj_*).
@@ -144,12 +145,30 @@ type Service struct {
 	Postgres *PostgresConfig `json:"postgres_svc,omitempty"`
 	Redis    *RedisConfig    `json:"redis_svc,omitempty"`
 
-	Variables []Variable       `json:"variables,omitempty"`
-	Ingress   []IngressPort    `json:"ingress_ports,omitempty"`
-	Configs   []ServiceConfig  `json:"configs,omitempty"`
-	Changeset []ChangesetEntry `json:"changeset,omitempty"`
+	Variables           []Variable           `json:"variables,omitempty"`
+	Ingress             []IngressPort        `json:"ingress_ports,omitempty"`
+	Configs             []ServiceConfig      `json:"configs,omitempty"`
+	Changeset           []ChangesetEntry     `json:"changeset,omitempty"`
+	PrivateHostname     string               `json:"private_hostname,omitempty"`
+	PrivateAccessGrants []PrivateAccessGrant `json:"private_access_grants,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// PrivateAccessGrant permits services in one consumer project to connect to a
+// specific private port on this service.
+type PrivateAccessGrant struct {
+	Slug                string `json:"slug"`
+	ConsumerProjectSlug string `json:"consumer_project_slug"`
+	ConsumerProjectName string `json:"consumer_project_name"`
+	Protocol            string `json:"protocol"`
+	Port                uint   `json:"port"`
+}
+
+type CreatePrivateAccessGrantInput struct {
+	ConsumerProject string `json:"consumer_project"`
+	Protocol        string `json:"protocol"`
+	Port            uint   `json:"port"`
 }
 
 // DockerConfig holds configuration for a Docker service.
