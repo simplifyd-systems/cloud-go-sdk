@@ -79,8 +79,11 @@ type Project struct {
 
 // Token is a scoped project API token (sk_proj_*).
 type Token struct {
-	Slug string `json:"slug"`
-	Name string `json:"name"`
+	Slug    string `json:"slug"`
+	Name    string `json:"name"`
+	Scope   string `json:"scope"`
+	Project string `json:"project"`
+	Env     *Env   `json:"env,omitempty"`
 	// Key is the full token value — only present on creation.
 	Key string `json:"key,omitempty"`
 	// MaskedKey is the partially-redacted key for display.
@@ -445,7 +448,7 @@ type shellResizeMsg struct {
 
 type createTokenRequest struct {
 	Name string `json:"name"`
-	Env  string `json:"env"`
+	Env  string `json:"env,omitempty"`
 }
 
 // ── Workspace / Project / Env create inputs ───────────────────────────────────
