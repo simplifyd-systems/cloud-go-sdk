@@ -19,7 +19,7 @@ func TestPrivateAccessGrantLifecycle(t *testing.T) {
 			}
 			w.WriteHeader(http.StatusCreated)
 		case r.Method == http.MethodGet && r.URL.Path == basePath:
-			_ = json.NewEncoder(w).Encode(Service{Slug: "db", PrivateHostname: "db.slug.simplifyd.internal", PrivateAccessGrants: []PrivateAccessGrant{{Slug: "grant-1", ConsumerProjectSlug: created.ConsumerProject, ConsumerProjectName: "payments", Protocol: created.Protocol, Port: created.Port}}})
+			_ = json.NewEncoder(w).Encode(Service{Slug: "db", PrivateHostname: "db.dev01.project.simplifyd.internal", PrivateAccessGrants: []PrivateAccessGrant{{Slug: "grant-1", ConsumerProjectSlug: created.ConsumerProject, ConsumerProjectName: "payments", Protocol: created.Protocol, Port: created.Port}}})
 		case r.Method == http.MethodDelete && r.URL.Path == basePath+"/private-access-grants/grant-1":
 			w.WriteHeader(http.StatusOK)
 		default:

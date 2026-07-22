@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -338,7 +341,39 @@ func (s *ServicesClient) ConnectShell(
 	stdout io.Writer,
 	resizeCh <-chan TerminalSize,
 ) error {
-	wsURL, err := s.shellWSURL(svcSlug)
+	return s.ConnectShellWithOptions(ctx, svcSlug, stdin, stdout, resizeCh, ShellOptions{TTY: readerIsTerminal(stdin)})
+}
+
+// readerIsTerminal recognizes the file shape used by terminal stdin without
+// adding a platform-specific terminal dependency to the SDK. Pipes and other
+// readers deliberately select non-TTY mode.
+func readerIsTerminal(reader io.Reader) bool {
+	file, ok := reader.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := file.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
+}
+
+// ShellOptions controls how the remote shell is attached.
+type ShellOptions struct {
+	// TTY allocates a terminal for interactive use. Set it to false when stdin
+	// is a pipe so terminal probes cannot consume command input.
+	TTY bool
+}
+
+// ConnectShellWithOptions opens a WebSocket shell with an explicit terminal
+// mode. Unlike ConnectShell, this can run a non-interactive, non-TTY session.
+func (s *ServicesClient) ConnectShellWithOptions(
+	ctx context.Context,
+	svcSlug string,
+	stdin io.Reader,
+	stdout io.Writer,
+	resizeCh <-chan TerminalSize,
+	options ShellOptions,
+) error {
+	wsURL, err := s.shellWSURL(svcSlug, options.TTY)
 	if err != nil {
 		return fmt.Errorf("building shell URL: %w", err)
 	}
@@ -350,6 +385,14 @@ func (s *ServicesClient) ConnectShell(
 	defer conn.Close()
 
 	errc := make(chan error, 3)
+	stdinEOFCapable := make(chan struct{})
+	var capabilityOnce sync.Once
+	var writeMu sync.Mutex
+	writeMessage := func(messageType int, data []byte) error {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		return conn.WriteMessage(messageType, data)
+	}
 
 	// server → stdout
 	go func() {
@@ -364,24 +407,44 @@ func (s *ServicesClient) ConnectShell(
 					errc <- err
 					return
 				}
+			} else if msgType == websocket.TextMessage {
+				var msg struct {
+					Type     string `json:"type"`
+					StdinEOF bool   `json:"stdin_eof"`
+				}
+				if json.Unmarshal(data, &msg) == nil && msg.Type == "shell_ready" && msg.StdinEOF {
+					capabilityOnce.Do(func() { close(stdinEOFCapable) })
+				}
 			}
 		}
 	}()
 
-	// stdin → server (binary frames)
+	// stdin → server (binary frames). EOF half-closes only remote stdin; the
+	// read pump remains active until all remote output has arrived.
 	go func() {
 		buf := make([]byte, 4096)
 		for {
 			n, err := stdin.Read(buf)
 			if n > 0 {
-				if werr := conn.WriteMessage(websocket.BinaryMessage, buf[:n]); werr != nil {
+				if werr := writeMessage(websocket.BinaryMessage, buf[:n]); werr != nil {
 					errc <- werr
 					return
 				}
 			}
 			if err != nil {
 				if err == io.EOF {
-					err = nil
+					select {
+					case <-stdinEOFCapable:
+						data, _ := json.Marshal(map[string]string{"type": "stdin_eof"})
+						if werr := writeMessage(websocket.TextMessage, data); werr != nil {
+							errc <- werr
+						}
+					case <-time.After(500 * time.Millisecond):
+						// Older servers do not support half-close. Preserve the
+						// previous EOF behavior instead of leaving the session hung.
+						errc <- nil
+					}
+					return
 				}
 				errc <- err
 				return
@@ -403,7 +466,7 @@ func (s *ServicesClient) ConnectShell(
 				}
 				msg := shellResizeMsg{Type: "resize", Cols: sz.Cols, Rows: sz.Rows}
 				data, _ := json.Marshal(msg)
-				if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+				if err := writeMessage(websocket.TextMessage, data); err != nil {
 					errc <- err
 					return
 				}
@@ -413,10 +476,10 @@ func (s *ServicesClient) ConnectShell(
 
 	select {
 	case <-ctx.Done():
-		conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+		_ = writeMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 		return nil
 	case err := <-errc:
-		conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+		_ = writeMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 		if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 			return nil
 		}
@@ -427,7 +490,7 @@ func (s *ServicesClient) ConnectShell(
 // shellWSURL builds the wss:// (or ws://) URL for the shell endpoint, with the
 // auth token passed as a query parameter (browsers and WebSocket clients cannot
 // set custom headers during the upgrade).
-func (s *ServicesClient) shellWSURL(svcSlug string) (string, error) {
+func (s *ServicesClient) shellWSURL(svcSlug string, tty bool) (string, error) {
 	base := s.client.baseURL
 	var wsBase string
 	switch {
@@ -448,6 +511,7 @@ func (s *ServicesClient) shellWSURL(svcSlug string) (string, error) {
 	}
 	q := u.Query()
 	q.Set("jwt", s.client.token)
+	q.Set("tty", strconv.FormatBool(tty))
 	u.RawQuery = q.Encode()
 	return u.String(), nil
 }
