@@ -54,3 +54,27 @@ func TestUpdateServiceInputDeleteReadinessProbeOmitsProbe(t *testing.T) {
 		t.Fatalf("delete payload unexpectedly contains probe: %s", data)
 	}
 }
+
+func TestCreateServiceInputReadinessProbeJSON(t *testing.T) {
+	data, err := json.Marshal(CreateServiceInput{
+		Name: "api",
+		Type: ServiceTypeDocker,
+		Docker: &DockerInput{
+			Image:          "example/api",
+			ReadinessProbe: &ServiceProbe{Path: "/ready", Port: 8080},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	docker := got["docker_image_svc"].(map[string]any)
+	probe := docker["readiness_probe"].(map[string]any)
+	if probe["path"] != "/ready" || probe["port"] != float64(8080) {
+		t.Fatalf("probe = %#v", probe)
+	}
+}

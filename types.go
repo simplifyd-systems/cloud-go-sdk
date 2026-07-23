@@ -268,8 +268,9 @@ type S3BucketInput struct {
 
 // DockerInput configures a Docker service on creation.
 type DockerInput struct {
-	Image string `json:"image"`
-	Tag   string `json:"tag,omitempty"`
+	Image          string        `json:"image"`
+	Tag            string        `json:"tag,omitempty"`
+	ReadinessProbe *ServiceProbe `json:"readiness_probe,omitempty"`
 }
 
 // ServiceProbe configures an HTTP health probe for a Docker service.
