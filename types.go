@@ -154,6 +154,9 @@ type Service struct {
 	Changeset           []ChangesetEntry     `json:"changeset,omitempty"`
 	PrivateHostname     string               `json:"private_hostname,omitempty"`
 	PrivateAccessGrants []PrivateAccessGrant `json:"private_access_grants,omitempty"`
+	LivenessProbe       *ServiceProbe        `json:"liveness_probe,omitempty"`
+	ReadinessProbe      *ServiceProbe        `json:"readiness_probe,omitempty"`
+	StartupProbe        *ServiceProbe        `json:"startup_probe,omitempty"`
 
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -269,6 +272,17 @@ type DockerInput struct {
 	Tag   string `json:"tag,omitempty"`
 }
 
+// ServiceProbe configures an HTTP health probe for a Docker service.
+type ServiceProbe struct {
+	Path                string `json:"path"`
+	Port                uint   `json:"port"`
+	InitialDelaySeconds int32  `json:"initial_delay_seconds"`
+	PeriodSeconds       int32  `json:"period_seconds"`
+	TimeoutSeconds      int32  `json:"timeout_seconds"`
+	FailureThreshold    int32  `json:"failure_threshold"`
+	SuccessThreshold    int32  `json:"success_threshold"`
+}
+
 // PostgresInput configures a PostgreSQL service on creation.
 type PostgresInput struct {
 	StorageGB uint64 `json:"storage_gb,omitempty"`
@@ -286,19 +300,20 @@ type RedisInput struct {
 
 // UpdateServiceInput is the request body for patching a service.
 // Set Action to what is changing: "name", "vcpus", "replicas", "memory", "image",
-// "start_command", or "registry_credentials".
+// "start_command", "registry_credentials", "*_probe", or "delete_*_probe".
 type UpdateServiceInput struct {
-	Action           string   `json:"action"`
-	Name             string   `json:"name,omitempty"`
-	VCPUs            uint     `json:"vcpus,omitempty"`
-	Replicas         uint     `json:"replicas,omitempty"`
-	Memory           uint     `json:"memory,omitempty"`
-	Image            string   `json:"image,omitempty"`
-	Tag              string   `json:"tag,omitempty"`
-	RegistryUsername string   `json:"registry_username,omitempty"`
-	RegistryPassword string   `json:"registry_password,omitempty"`
-	StartCommand     string   `json:"start_command,omitempty"`
-	StartCommandArgs []string `json:"start_command_args,omitempty"`
+	Action           string        `json:"action"`
+	Name             string        `json:"name,omitempty"`
+	VCPUs            uint          `json:"vcpus,omitempty"`
+	Replicas         uint          `json:"replicas,omitempty"`
+	Memory           uint          `json:"memory,omitempty"`
+	Image            string        `json:"image,omitempty"`
+	Tag              string        `json:"tag,omitempty"`
+	RegistryUsername string        `json:"registry_username,omitempty"`
+	RegistryPassword string        `json:"registry_password,omitempty"`
+	StartCommand     string        `json:"start_command,omitempty"`
+	StartCommandArgs []string      `json:"start_command_args,omitempty"`
+	Probe            *ServiceProbe `json:"probe,omitempty"`
 }
 
 // AddIngressInput is the request body for adding an ingress port.
