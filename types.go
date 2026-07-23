@@ -176,11 +176,12 @@ type CreatePrivateAccessGrantInput struct {
 
 // DockerConfig holds configuration for a Docker service.
 type DockerConfig struct {
-	Image                  string `json:"image"`
-	Tag                    string `json:"tag"`
-	RegistryUsername       string `json:"registry_username,omitempty"`
-	HasRegistryCredentials bool   `json:"has_registry_credentials,omitempty"`
-	StartCommand           string `json:"start_command,omitempty"`
+	Image                  string   `json:"image"`
+	Tag                    string   `json:"tag"`
+	RegistryUsername       string   `json:"registry_username,omitempty"`
+	HasRegistryCredentials bool     `json:"has_registry_credentials,omitempty"`
+	StartCommand           string   `json:"start_command,omitempty"`
+	StartCommandArgs       []string `json:"start_command_args,omitempty"`
 }
 
 // PostgresConfig holds configuration for a managed PostgreSQL service.
@@ -284,18 +285,20 @@ type RedisInput struct {
 }
 
 // UpdateServiceInput is the request body for patching a service.
-// Set Action to what is changing: "name", "vcpus", "memory", "image",
+// Set Action to what is changing: "name", "vcpus", "replicas", "memory", "image",
 // "start_command", or "registry_credentials".
 type UpdateServiceInput struct {
-	Action           string `json:"action"`
-	Name             string `json:"name,omitempty"`
-	VCPUs            uint   `json:"vcpus,omitempty"`
-	Memory           uint   `json:"memory,omitempty"`
-	Image            string `json:"image,omitempty"`
-	Tag              string `json:"tag,omitempty"`
-	RegistryUsername string `json:"registry_username,omitempty"`
-	RegistryPassword string `json:"registry_password,omitempty"`
-	StartCommand     string `json:"start_command,omitempty"`
+	Action           string   `json:"action"`
+	Name             string   `json:"name,omitempty"`
+	VCPUs            uint     `json:"vcpus,omitempty"`
+	Replicas         uint     `json:"replicas,omitempty"`
+	Memory           uint     `json:"memory,omitempty"`
+	Image            string   `json:"image,omitempty"`
+	Tag              string   `json:"tag,omitempty"`
+	RegistryUsername string   `json:"registry_username,omitempty"`
+	RegistryPassword string   `json:"registry_password,omitempty"`
+	StartCommand     string   `json:"start_command,omitempty"`
+	StartCommandArgs []string `json:"start_command_args,omitempty"`
 }
 
 // AddIngressInput is the request body for adding an ingress port.
