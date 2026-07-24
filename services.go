@@ -75,6 +75,17 @@ func (s *ServicesClient) Delete(ctx context.Context, svcSlug string) error {
 	return s.client.delete(ctx, s.svcPath(svcSlug), nil)
 }
 
+// CreatePostgresBackup starts an on-demand base backup for a Postgres service.
+// The service must have a configured backup destination and a ready Barman
+// plugin. The returned run can be correlated with the service backup status.
+func (s *ServicesClient) CreatePostgresBackup(ctx context.Context, svcSlug string) (*BackupRun, error) {
+	var run BackupRun
+	if err := s.client.post(ctx, s.svcPath(svcSlug)+"/postgres/backups", nil, &run); err != nil {
+		return nil, err
+	}
+	return &run, nil
+}
+
 // ── deployments ───────────────────────────────────────────────────────────────
 
 // Deploy creates a new deployment (first deploy or deploy after config changes).

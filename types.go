@@ -373,6 +373,17 @@ type Deployment struct {
 	DeployedAt time.Time        `json:"deployed_at,omitempty"`
 }
 
+// BackupRun describes a CloudNativePG base-backup operation.
+type BackupRun struct {
+	Name      string     `json:"name"`
+	BackupID  string     `json:"backup_id,omitempty"`
+	Method    string     `json:"method,omitempty"`
+	Phase     string     `json:"phase,omitempty"`
+	Error     string     `json:"error,omitempty"`
+	StartedAt *time.Time `json:"started_at,omitempty"`
+	StoppedAt *time.Time `json:"stopped_at,omitempty"`
+}
+
 type listDeploymentsResponse struct {
 	Active      Deployment   `json:"active"`
 	Deployments []Deployment `json:"deployments"`
