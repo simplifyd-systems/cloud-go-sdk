@@ -86,6 +86,30 @@ func (s *ServicesClient) CreatePostgresBackup(ctx context.Context, svcSlug strin
 	return &run, nil
 }
 
+// GetPostgresParameters returns the customer-controlled PostgreSQL parameters
+// for a managed Postgres service.
+func (s *ServicesClient) GetPostgresParameters(ctx context.Context, svcSlug string) (*PostgresParameters, error) {
+	var parameters PostgresParameters
+	if err := s.client.get(ctx, s.svcPath(svcSlug)+"/postgres/parameters", &parameters); err != nil {
+		return nil, err
+	}
+	return &parameters, nil
+}
+
+// UpdatePostgresParameters replaces the complete customer-controlled parameter
+// map. An empty map restores platform defaults.
+func (s *ServicesClient) UpdatePostgresParameters(
+	ctx context.Context,
+	svcSlug string,
+	input UpdatePostgresParametersInput,
+) (*PostgresParameters, error) {
+	var parameters PostgresParameters
+	if err := s.client.put(ctx, s.svcPath(svcSlug)+"/postgres/parameters", input, &parameters); err != nil {
+		return nil, err
+	}
+	return &parameters, nil
+}
+
 // ── deployments ───────────────────────────────────────────────────────────────
 
 // Deploy creates a new deployment (first deploy or deploy after config changes).

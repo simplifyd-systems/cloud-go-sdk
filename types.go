@@ -192,6 +192,18 @@ type PostgresConfig struct {
 	Image          string                 `json:"image"`
 	Tag            string                 `json:"tag"`
 	ConnectionInfo PostgresConnectionInfo `json:"connection_info"`
+	Parameters     map[string]string      `json:"parameters,omitempty"`
+}
+
+// PostgresParameters describes customer-controlled PostgreSQL server settings
+// and the parameter names accepted by the platform.
+type PostgresParameters struct {
+	Parameters map[string]string `json:"parameters"`
+	Supported  []string          `json:"supported,omitempty"`
+}
+
+type UpdatePostgresParametersInput struct {
+	Parameters map[string]string `json:"parameters"`
 }
 
 // PostgresConnectionInfo contains the credentials for a PostgreSQL service.
