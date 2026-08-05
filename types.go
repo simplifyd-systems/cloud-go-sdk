@@ -119,6 +119,7 @@ const (
 	ServiceTypeHTTPGateway   ServiceType = "http_gateway"
 	ServiceTypeS3Bucket      ServiceType = "s3_bucket"
 	ServiceTypeZerodataProxy ServiceType = "zerodata_proxy"
+	ServiceTypeStaticSite    ServiceType = "static_site"
 )
 
 // ServiceStatus is the current lifecycle state of a service.
@@ -262,14 +263,90 @@ type ChangesetEntry struct {
 
 // CreateServiceInput is the request body for creating a new service.
 type CreateServiceInput struct {
-	Name     string         `json:"name"`
-	Type     ServiceType    `json:"type"`
-	VCPUs    uint           `json:"vcpus,omitempty"`
-	Memory   uint           `json:"memory,omitempty"`
-	Docker   *DockerInput   `json:"docker_image_svc,omitempty"`
-	Postgres *PostgresInput `json:"postgres_svc,omitempty"`
-	Redis    *RedisInput    `json:"redis_svc,omitempty"`
-	S3Bucket *S3BucketInput `json:"s3_bucket_svc,omitempty"`
+	Name       string           `json:"name"`
+	Type       ServiceType      `json:"type"`
+	VCPUs      uint             `json:"vcpus,omitempty"`
+	Memory     uint             `json:"memory,omitempty"`
+	Docker     *DockerInput     `json:"docker_image_svc,omitempty"`
+	Postgres   *PostgresInput   `json:"postgres_svc,omitempty"`
+	Redis      *RedisInput      `json:"redis_svc,omitempty"`
+	S3Bucket   *S3BucketInput   `json:"s3_bucket_svc,omitempty"`
+	StaticSite *StaticSiteInput `json:"static_site_svc,omitempty"`
+}
+
+// StaticSiteInput configures a static site service on creation. A static site
+// serves files straight from object storage: there is no container, so no
+// image, resources or replicas apply.
+type StaticSiteInput struct {
+	Name string `json:"name,omitempty"`
+	// IndexDocument is the object served for a directory request, default
+	// index.html.
+	IndexDocument string `json:"index_document,omitempty"`
+	// ErrorDocument is the object served for a request that matches nothing,
+	// defaulting to IndexDocument. Pointing it at the index is what makes a
+	// client-side router work on deep links.
+	ErrorDocument string `json:"error_document,omitempty"`
+}
+
+// StaticSite describes a static site service.
+type StaticSite struct {
+	DisplayName   string `json:"display_name"`
+	BucketName    string `json:"bucket_name"`
+	Status        string `json:"status"`
+	IndexDocument string `json:"index_document"`
+	ErrorDocument string `json:"error_document"`
+	// DefaultURL is the always-available platform URL for the site.
+	DefaultURL string `json:"default_url,omitempty"`
+	// CustomDomain is served once its DNS points at DomainCNAMETarget.
+	CustomDomain      string     `json:"custom_domain,omitempty"`
+	DomainStatus      string     `json:"domain_status,omitempty"`
+	DomainCNAMETarget string     `json:"domain_cname_target,omitempty"`
+	BytesUsed         int64      `json:"bytes_used"`
+	FileCount         int64      `json:"file_count"`
+	LastPublishedAt   *time.Time `json:"last_published_at,omitempty"`
+}
+
+// StaticSiteFile is one file in a site publish. Content travels inline, so a
+// caller with no filesystem and no way to make an out-of-band upload can
+// publish a complete site in a single request.
+type StaticSiteFile struct {
+	// Path is the file's path within the site, e.g. "assets/app.js".
+	Path string `json:"path"`
+	// Content is the file body: UTF-8 text, or base64 when Encoding says so.
+	Content string `json:"content"`
+	// Encoding is "utf8" (default) or "base64". Binary files must use base64.
+	Encoding string `json:"encoding,omitempty"`
+	// ContentType overrides the type inferred from the path extension.
+	ContentType string `json:"content_type,omitempty"`
+}
+
+// PublishStaticSiteInput is the request body for publishing site files.
+type PublishStaticSiteInput struct {
+	Files []StaticSiteFile `json:"files"`
+	// Prune removes objects not in Files, making the publish a full replace.
+	// Defaults to true server-side when nil.
+	Prune *bool `json:"prune,omitempty"`
+}
+
+// StaticSitePublishResult reports what a publish changed.
+type StaticSitePublishResult struct {
+	FilesUploaded int      `json:"files_uploaded"`
+	FilesDeleted  int      `json:"files_deleted"`
+	BytesUploaded int64    `json:"bytes_uploaded"`
+	URL           string   `json:"url,omitempty"`
+	Paths         []string `json:"paths,omitempty"`
+}
+
+// UpdateStaticSiteDocumentsInput sets the index and error documents.
+type UpdateStaticSiteDocumentsInput struct {
+	IndexDocument string `json:"index_document,omitempty"`
+	ErrorDocument string `json:"error_document,omitempty"`
+}
+
+// SetStaticSiteDomainInput attaches a custom domain; an empty value detaches
+// the current one.
+type SetStaticSiteDomainInput struct {
+	CustomDomain string `json:"custom_domain"`
 }
 
 // S3BucketInput configures an S3-compatible bucket service on creation.
