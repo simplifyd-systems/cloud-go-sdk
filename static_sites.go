@@ -1,6 +1,9 @@
 package cloud
 
-import "context"
+import (
+	"context"
+	"net/url"
+)
 
 // StaticSitesClient manages a static site service's content and domain.
 // Obtain one via Services().StaticSite(svcSlug).
@@ -36,6 +39,31 @@ func (c *StaticSitesClient) Get(ctx context.Context) (*StaticSite, error) {
 func (c *StaticSitesClient) Publish(ctx context.Context, in PublishStaticSiteInput) (*StaticSitePublishResult, error) {
 	var result StaticSitePublishResult
 	if err := c.services.client.post(ctx, c.base()+"/publish", in, &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// ListFiles returns every published file, recursively, under an optional
+// prefix. Contents are not included — use Fetch for those.
+func (c *StaticSitesClient) ListFiles(ctx context.Context, prefix string) (*StaticSiteFileList, error) {
+	path := c.base() + "/files"
+	if prefix != "" {
+		path += "?prefix=" + url.QueryEscape(prefix)
+	}
+	var list StaticSiteFileList
+	if err := c.services.client.get(ctx, path, &list); err != nil {
+		return nil, err
+	}
+	return &list, nil
+}
+
+// Fetch downloads the named files with their contents inline, mirroring what
+// Publish accepts: a caller can fetch a file, edit it and publish it straight
+// back. Text files come back as utf8 and binary files as base64.
+func (c *StaticSitesClient) Fetch(ctx context.Context, paths []string) (*StaticSiteFetchResult, error) {
+	var result StaticSiteFetchResult
+	if err := c.services.client.post(ctx, c.base()+"/files/fetch", FetchStaticSiteFilesInput{Paths: paths}, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil

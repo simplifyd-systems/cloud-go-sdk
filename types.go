@@ -337,6 +337,33 @@ type StaticSitePublishResult struct {
 	Paths         []string `json:"paths,omitempty"`
 }
 
+// StaticSiteObject describes one published file. A listing carries no content;
+// use StaticSitesClient.Fetch for the bytes.
+type StaticSiteObject struct {
+	Path         string    `json:"path"`
+	Size         int64     `json:"size"`
+	ContentType  string    `json:"content_type,omitempty"`
+	LastModified time.Time `json:"last_modified"`
+}
+
+// StaticSiteFileList is the result of listing a site's files.
+type StaticSiteFileList struct {
+	Files      []StaticSiteObject `json:"files"`
+	TotalBytes int64              `json:"total_bytes"`
+	Truncated  bool               `json:"truncated"`
+}
+
+// FetchStaticSiteFilesInput names the files to download inline.
+type FetchStaticSiteFilesInput struct {
+	Paths []string `json:"paths"`
+}
+
+// StaticSiteFetchResult carries file contents back in the same shape Publish
+// accepts, so a fetched file can be edited and published back unchanged.
+type StaticSiteFetchResult struct {
+	Files []StaticSiteFile `json:"files"`
+}
+
 // UpdateStaticSiteDocumentsInput sets the index and error documents.
 type UpdateStaticSiteDocumentsInput struct {
 	IndexDocument string `json:"index_document,omitempty"`
