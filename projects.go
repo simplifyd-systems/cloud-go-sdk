@@ -35,6 +35,15 @@ func (p *ProjectClient) Update(ctx context.Context, name string) (*Project, erro
 	return &proj, nil
 }
 
+// Delete tears the project down: every service in every one of its
+// environments is destroyed, then the project, its environments and its project
+// tokens are deleted. This is not reversible.
+//
+// Requires the owner role — a project token cannot call it.
+func (p *ProjectClient) Delete(ctx context.Context) error {
+	return p.client.delete(ctx, p.base(), nil)
+}
+
 // ── environments ──────────────────────────────────────────────────────────────
 
 // ListEnvs returns all environments in the project.

@@ -36,6 +36,17 @@ func (e *EnvClient) Update(ctx context.Context, name string) (*Env, error) {
 	return &env, nil
 }
 
+// Delete tears the environment down: every service in it is destroyed, then the
+// environment, its shared variables and any tokens scoped to it are deleted.
+// Project-wide tokens survive. This is not reversible.
+//
+// Requires the owner role — a project token cannot call it. Deleting a
+// project's last remaining environment is refused with a 409; test for it with
+// IsConflict and delete the project instead.
+func (e *EnvClient) Delete(ctx context.Context) error {
+	return e.client.delete(ctx, e.base(), nil)
+}
+
 // ── env-level variables ───────────────────────────────────────────────────────
 
 // Variables returns the EnvVariablesClient for environment-level shared variables.

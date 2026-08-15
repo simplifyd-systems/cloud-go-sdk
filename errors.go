@@ -33,6 +33,14 @@ func IsForbidden(err error) bool {
 	return errors.As(err, &e) && e.StatusCode == http.StatusForbidden
 }
 
+// IsConflict reports whether err is an HTTP 409 response — the request was
+// understood but refused because of the resource's current state. Deleting a
+// project's last environment is the common case.
+func IsConflict(err error) bool {
+	var e *APIError
+	return errors.As(err, &e) && e.StatusCode == http.StatusConflict
+}
+
 // IsRateLimited reports whether err is an HTTP 429 response.
 func IsRateLimited(err error) bool {
 	var e *APIError
