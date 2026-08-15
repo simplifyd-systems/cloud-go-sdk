@@ -3,6 +3,7 @@ package cloud
 import (
 	"context"
 	"fmt"
+	"net/url"
 )
 
 // WorkspaceClient is scoped to a single workspace.
@@ -200,9 +201,65 @@ func (r *RegistryClient) Credentials(ctx context.Context) (*RegistryCredentials,
 
 // ListRepos returns all repositories in the workspace registry.
 func (r *RegistryClient) ListRepos(ctx context.Context) ([]RegistryRepo, error) {
-	var repos []RegistryRepo
-	if err := r.client.get(ctx, r.base()+"/repos", &repos); err != nil {
+	var resp struct {
+		Repositories []RegistryRepo `json:"repositories"`
+		Total        int            `json:"total"`
+	}
+	if err := r.client.get(ctx, r.base()+"/repos", &resp); err != nil {
 		return nil, err
 	}
-	return repos, nil
+	return resp.Repositories, nil
+}
+
+// ListArtifacts returns the artifacts in a repository together with their tags.
+// name is the full repository name, including the registry project prefix
+// (e.g. "myworkspace/myapp").
+func (r *RegistryClient) ListArtifacts(ctx context.Context, name string) ([]RegistryArtifact, error) {
+	path := fmt.Sprintf("%s/repos/artifacts?name=%s", r.base(), url.QueryEscape(name))
+
+	var resp struct {
+		Artifacts []RegistryArtifact `json:"artifacts"`
+		Total     int                `json:"total"`
+	}
+	if err := r.client.get(ctx, path, &resp); err != nil {
+		return nil, err
+	}
+	return resp.Artifacts, nil
+}
+
+// DeleteTag removes a single tag from a repository, leaving any other tags on the
+// same image intact. When the tag is the last one on its image, the image itself is
+// deleted so no untagged manifest is left behind; the returned string reports which
+// happened ("tag" or "artifact").
+//
+// digest identifies the image carrying the tag, as returned by ListArtifacts.
+func (r *RegistryClient) DeleteTag(ctx context.Context, name, digest, tag string) (string, error) {
+	q := url.Values{}
+	q.Set("name", name)
+	q.Set("reference", digest)
+	q.Set("tag", tag)
+
+	return r.deleteArtifactPath(ctx, q)
+}
+
+// DeleteArtifact deletes an image by digest, removing every tag that points at it.
+func (r *RegistryClient) DeleteArtifact(ctx context.Context, name, digest string) (string, error) {
+	q := url.Values{}
+	q.Set("name", name)
+	q.Set("reference", digest)
+
+	return r.deleteArtifactPath(ctx, q)
+}
+
+func (r *RegistryClient) deleteArtifactPath(ctx context.Context, q url.Values) (string, error) {
+	path := fmt.Sprintf("%s/repos/artifacts?%s", r.base(), q.Encode())
+
+	var resp struct {
+		Success bool   `json:"success"`
+		Deleted string `json:"deleted"`
+	}
+	if err := r.client.delete(ctx, path, &resp); err != nil {
+		return "", err
+	}
+	return resp.Deleted, nil
 }

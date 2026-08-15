@@ -95,9 +95,19 @@ func (t *TokensClient) List(ctx context.Context) ([]Token, error) {
 
 // Create creates a new project token scoped to the given environment slug.
 // The full token key is only returned on creation — store it securely.
+//
+// Tokens created this way have no registry push grant. Use CreateWithOptions
+// to mint a token that may read registry credentials.
 func (t *TokensClient) Create(ctx context.Context, name, envSlug string) (*Token, error) {
+	return t.CreateWithOptions(ctx, CreateTokenOptions{Name: name, Env: envSlug})
+}
+
+// CreateWithOptions creates a new project token, including grants that Create
+// leaves off. The full token key is only returned on creation.
+func (t *TokensClient) CreateWithOptions(ctx context.Context, opts CreateTokenOptions) (*Token, error) {
 	var token Token
-	if err := t.client.post(ctx, t.base(), createTokenRequest{Name: name, Env: envSlug}, &token); err != nil {
+	req := createTokenRequest{Name: opts.Name, Env: opts.Env, RegistryPush: opts.RegistryPush}
+	if err := t.client.post(ctx, t.base(), req, &token); err != nil {
 		return nil, err
 	}
 	return &token, nil
