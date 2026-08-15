@@ -109,6 +109,35 @@ func (c *Client) Me(ctx context.Context) (*User, error) {
 	return &u, nil
 }
 
+// TokenScope describes what the credential in use is allowed to act on.
+//
+// A project token (sk_proj_*) is bound to one workspace and project at creation
+// time, and optionally to a single environment. Callers can use this to avoid
+// asking the user to restate coordinates the token already pins.
+type TokenScope struct {
+	// Kind is "user", "project_token", or "oauth".
+	Kind string `json:"kind"`
+	// Workspace, Project and Env are slugs, populated only for project tokens.
+	// Env is empty when the token is project-scoped rather than env-scoped.
+	Workspace     string `json:"workspace"`
+	WorkspaceName string `json:"workspace_name"`
+	Project       string `json:"project"`
+	Env           string `json:"env"`
+}
+
+// IsProjectToken reports whether the credential is a project token, and so
+// carries a usable Workspace and Project.
+func (s TokenScope) IsProjectToken() bool { return s.Kind == "project_token" }
+
+// TokenScope returns the scope bound to the credential the client is using.
+func (c *Client) TokenScope(ctx context.Context) (*TokenScope, error) {
+	var s TokenScope
+	if err := c.get(ctx, "/v1/auth/scope", &s); err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
 // ListWorkspaces returns all workspaces the authenticated user belongs to.
 func (c *Client) ListWorkspaces(ctx context.Context) ([]Workspace, error) {
 	var ws []Workspace
