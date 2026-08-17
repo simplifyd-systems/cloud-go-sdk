@@ -115,7 +115,7 @@ func (t *TokensClient) Create(ctx context.Context, name, envSlug string) (*Token
 // leaves off. The full token key is only returned on creation.
 func (t *TokensClient) CreateWithOptions(ctx context.Context, opts CreateTokenOptions) (*Token, error) {
 	var token Token
-	req := createTokenRequest{Name: opts.Name, Env: opts.Env, RegistryPush: opts.RegistryPush}
+	req := createTokenRequest{Name: opts.Name, Env: opts.Env}
 	if err := t.client.post(ctx, t.base(), req, &token); err != nil {
 		return nil, err
 	}

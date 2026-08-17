@@ -108,8 +108,6 @@ type Token struct {
 	// MaskedKey is the partially-redacted key for display.
 	MaskedKey string    `json:"masked_key,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
-	// RegistryPush reports whether the token may read registry credentials.
-	RegistryPush bool `json:"registry_push"`
 }
 
 // ── Environment ───────────────────────────────────────────────────────────────
@@ -614,18 +612,14 @@ type shellResizeMsg struct {
 // ── Token inputs ──────────────────────────────────────────────────────────────
 
 type createTokenRequest struct {
-	Name         string `json:"name"`
-	Env          string `json:"env,omitempty"`
-	RegistryPush bool   `json:"registry_push,omitempty"`
+	Name string `json:"name"`
+	Env  string `json:"env,omitempty"`
 }
 
-// CreateTokenOptions describes a token to mint. RegistryPush is an explicit
-// opt-in: without it the token cannot read registry credentials and so cannot
-// push images.
+// CreateTokenOptions describes a token to mint.
 type CreateTokenOptions struct {
-	Name         string
-	Env          string
-	RegistryPush bool
+	Name string
+	Env  string
 }
 
 // ── Workspace / Project / Env create inputs ───────────────────────────────────
