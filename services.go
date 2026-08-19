@@ -544,6 +544,29 @@ func (s *ServicesClient) Ingress(svcSlug string) *IngressClient {
 	}
 }
 
+// GatewayRoutes returns a GatewayRoutesClient for managing the routing table of
+// an HTTP gateway service.
+func (s *ServicesClient) GatewayRoutes(svcSlug string) *GatewayRoutesClient {
+	return &GatewayRoutesClient{
+		client:    s.client,
+		workspace: s.workspace,
+		project:   s.project,
+		env:       s.env,
+		svc:       svcSlug,
+	}
+}
+
+// IPsec returns an IPsecClient for managing the tunnels on a VPN gateway service.
+func (s *ServicesClient) IPsec(svcSlug string) *IPsecClient {
+	return &IPsecClient{
+		client:    s.client,
+		workspace: s.workspace,
+		project:   s.project,
+		env:       s.env,
+		svc:       svcSlug,
+	}
+}
+
 // ── shell ─────────────────────────────────────────────────────────────────────
 
 // ConnectShell opens an interactive WebSocket shell to a running service
