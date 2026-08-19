@@ -32,6 +32,10 @@ func (s *ServicesClient) svcPath(svcSlug string) string {
 	return s.base() + "/" + svcSlug
 }
 
+func (s *ServicesClient) postgresPath(svcSlug, suffix string) string {
+	return s.svcPath(svcSlug) + "/postgres" + suffix
+}
+
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 
 // List returns all services in the environment.
@@ -108,6 +112,185 @@ func (s *ServicesClient) UpdatePostgresParameters(
 		return nil, err
 	}
 	return &parameters, nil
+}
+
+// ── managed PostgreSQL: databases, extensions, users ─────────────────────────
+
+// ListPostgresDatabases returns the additional databases on a Postgres service.
+// The default "app" database always exists and is not included.
+func (s *ServicesClient) ListPostgresDatabases(ctx context.Context, svcSlug string) ([]PostgresDatabase, error) {
+	var databases []PostgresDatabase
+	if err := s.client.get(ctx, s.postgresPath(svcSlug, "/databases"), &databases); err != nil {
+		return nil, err
+	}
+	return databases, nil
+}
+
+// CreatePostgresDatabase creates a database owned by an existing role. Create the
+// owner with CreatePostgresUser first; only "app" exists by default.
+func (s *ServicesClient) CreatePostgresDatabase(
+	ctx context.Context,
+	svcSlug string,
+	input CreatePostgresDatabaseInput,
+) (*PostgresDatabase, error) {
+	var database PostgresDatabase
+	if err := s.client.post(ctx, s.postgresPath(svcSlug, "/databases"), input, &database); err != nil {
+		return nil, err
+	}
+	return &database, nil
+}
+
+// DeletePostgresDatabase drops a database and everything in it. The default
+// "app" database cannot be deleted.
+func (s *ServicesClient) DeletePostgresDatabase(ctx context.Context, svcSlug, name string) error {
+	return s.client.delete(ctx, s.postgresPath(svcSlug, "/databases/"+url.PathEscape(name)), nil)
+}
+
+// ListPostgresExtensions returns the extensions declared in one database along
+// with the platform allowlist. Pass "app" for the default database.
+//
+// The result includes entries with Ensure "absent", which are pending removals
+// rather than installed extensions; use PostgresExtensions.Installed to get only
+// what is actually installed.
+func (s *ServicesClient) ListPostgresExtensions(
+	ctx context.Context,
+	svcSlug, database string,
+) (*PostgresExtensions, error) {
+	var extensions PostgresExtensions
+	path := s.postgresPath(svcSlug, "/databases/"+url.PathEscape(database)+"/extensions")
+	if err := s.client.get(ctx, path, &extensions); err != nil {
+		return nil, err
+	}
+	return &extensions, nil
+}
+
+// SetPostgresExtensions replaces the complete set of extensions in a database.
+//
+// The list is authoritative: an extension currently installed and missing from
+// it is DROPped, which fails if any table, index or column still depends on it.
+// To add or remove one without disturbing the rest, use EnablePostgresExtension
+// or DisablePostgresExtension.
+func (s *ServicesClient) SetPostgresExtensions(
+	ctx context.Context,
+	svcSlug, database string,
+	input SetPostgresExtensionsInput,
+) (*PostgresExtensions, error) {
+	var extensions PostgresExtensions
+	path := s.postgresPath(svcSlug, "/databases/"+url.PathEscape(database)+"/extensions")
+	if input.Extensions == nil {
+		input.Extensions = []string{}
+	}
+	if err := s.client.put(ctx, path, input, &extensions); err != nil {
+		return nil, err
+	}
+	return &extensions, nil
+}
+
+// EnablePostgresExtension installs one extension, leaving the rest of the
+// database's extensions in place. It is a read-modify-write over
+// SetPostgresExtensions, so a concurrent change to the same database can be lost;
+// use SetPostgresExtensions when you already know the full desired set.
+func (s *ServicesClient) EnablePostgresExtension(
+	ctx context.Context,
+	svcSlug, database, name string,
+) (*PostgresExtensions, error) {
+	current, err := s.ListPostgresExtensions(ctx, svcSlug, database)
+	if err != nil {
+		return nil, err
+	}
+	installed := current.Installed()
+	for _, n := range installed {
+		if n == name {
+			return current, nil
+		}
+	}
+	return s.SetPostgresExtensions(ctx, svcSlug, database,
+		SetPostgresExtensionsInput{Extensions: append(installed, name)})
+}
+
+// DisablePostgresExtension drops one extension, leaving the rest in place. The
+// drop fails if any object in the database still depends on the extension.
+func (s *ServicesClient) DisablePostgresExtension(
+	ctx context.Context,
+	svcSlug, database, name string,
+) (*PostgresExtensions, error) {
+	current, err := s.ListPostgresExtensions(ctx, svcSlug, database)
+	if err != nil {
+		return nil, err
+	}
+	remaining := make([]string, 0, len(current.Extensions))
+	found := false
+	for _, n := range current.Installed() {
+		if n == name {
+			found = true
+			continue
+		}
+		remaining = append(remaining, n)
+	}
+	if !found {
+		return current, nil
+	}
+	return s.SetPostgresExtensions(ctx, svcSlug, database,
+		SetPostgresExtensionsInput{Extensions: remaining})
+}
+
+// ListPostgresUsers returns the additional login roles on a Postgres service.
+// The default "app" role is not included, and passwords are never returned.
+func (s *ServicesClient) ListPostgresUsers(ctx context.Context, svcSlug string) ([]PostgresUser, error) {
+	var users []PostgresUser
+	if err := s.client.get(ctx, s.postgresPath(svcSlug, "/users"), &users); err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
+// CreatePostgresUser creates a login role. The returned password is a one-time
+// reveal — it cannot be read back, only rotated.
+func (s *ServicesClient) CreatePostgresUser(
+	ctx context.Context,
+	svcSlug string,
+	input CreatePostgresUserInput,
+) (*PostgresUser, error) {
+	var user PostgresUser
+	if err := s.client.post(ctx, s.postgresPath(svcSlug, "/users"), input, &user); err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+// UpdatePostgresUserRoles replaces a user's role memberships. The list is
+// authoritative: memberships omitted from it are revoked.
+func (s *ServicesClient) UpdatePostgresUserRoles(
+	ctx context.Context,
+	svcSlug, username string,
+	input UpdatePostgresUserRolesInput,
+) (*PostgresUser, error) {
+	var user PostgresUser
+	path := s.postgresPath(svcSlug, "/users/"+url.PathEscape(username)+"/roles")
+	if err := s.client.patch(ctx, path, input, &user); err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+// RotatePostgresUserPassword issues a new password for a user and returns it.
+// This is the only way to recover a lost password, and it invalidates the old one.
+func (s *ServicesClient) RotatePostgresUserPassword(
+	ctx context.Context,
+	svcSlug, username string,
+) (*PostgresUser, error) {
+	var user PostgresUser
+	path := s.postgresPath(svcSlug, "/users/"+url.PathEscape(username)+"/rotate-password")
+	if err := s.client.post(ctx, path, nil, &user); err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+// DeletePostgresUser drops a login role. Databases owned by the role must be
+// deleted first.
+func (s *ServicesClient) DeletePostgresUser(ctx context.Context, svcSlug, username string) error {
+	return s.client.delete(ctx, s.postgresPath(svcSlug, "/users/"+url.PathEscape(username)), nil)
 }
 
 // ── deployments ───────────────────────────────────────────────────────────────

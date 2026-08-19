@@ -139,6 +139,8 @@ const (
 	ServiceTypeS3Bucket      ServiceType = "s3_bucket"
 	ServiceTypeZerodataProxy ServiceType = "zerodata_proxy"
 	ServiceTypeStaticSite    ServiceType = "static_site"
+	ServiceTypeKafka         ServiceType = "kafka"
+	ServiceTypeIPsecGateway  ServiceType = "ipsec_gateway"
 )
 
 // ServiceStatus is the current lifecycle state of a service.
@@ -164,9 +166,12 @@ type Service struct {
 	Region   string        `json:"region"`
 	Status   ServiceStatus `json:"status"`
 
-	Docker   *DockerConfig   `json:"docker_image_svc,omitempty"`
-	Postgres *PostgresConfig `json:"postgres_svc,omitempty"`
-	Redis    *RedisConfig    `json:"redis_svc,omitempty"`
+	Docker       *DockerConfig       `json:"docker_image_svc,omitempty"`
+	Postgres     *PostgresConfig     `json:"postgres_svc,omitempty"`
+	Redis        *RedisConfig        `json:"redis_svc,omitempty"`
+	Kafka        *KafkaConfig        `json:"kafka_svc,omitempty"`
+	HTTPGateway  *HTTPGatewayConfig  `json:"http_gateway_svc,omitempty"`
+	IPsecGateway *IPsecGatewayConfig `json:"ipsec_gateway_svc,omitempty"`
 
 	Variables           []Variable           `json:"variables,omitempty"`
 	Ingress             []IngressPort        `json:"ingress_ports,omitempty"`
@@ -226,6 +231,92 @@ type UpdatePostgresParametersInput struct {
 	Parameters map[string]string `json:"parameters"`
 }
 
+// PostgresDatabase is a database on a managed PostgreSQL service, alongside the
+// default "app" database that always exists and is not listed.
+type PostgresDatabase struct {
+	Name  string `json:"name"`
+	Owner string `json:"owner"`
+	// Extensions are the extensions declared in this database. An entry with
+	// Ensure "absent" is a pending removal, not an installed extension.
+	Extensions []PostgresExtension `json:"extensions,omitempty"`
+}
+
+// PostgresExtension is an extension managed inside a database.
+type PostgresExtension struct {
+	Name string `json:"name"`
+	// Ensure is "present" or "absent". An absent entry is retained so the
+	// platform can finish dropping the extension.
+	Ensure string `json:"ensure"`
+}
+
+// PostgresExtensions is the extension state of one database, together with the
+// platform allowlist of extensions that may be installed.
+type PostgresExtensions struct {
+	Extensions []PostgresExtension `json:"extensions"`
+	Supported  []string            `json:"supported,omitempty"`
+}
+
+// Installed returns the names of the extensions actually installed, excluding
+// the "absent" entries that represent pending removals.
+func (p *PostgresExtensions) Installed() []string {
+	names := make([]string, 0, len(p.Extensions))
+	for _, e := range p.Extensions {
+		if e.Ensure == PostgresExtensionAbsent {
+			continue
+		}
+		names = append(names, e.Name)
+	}
+	return names
+}
+
+// Ensure values for PostgresExtension.
+const (
+	PostgresExtensionPresent = "present"
+	PostgresExtensionAbsent  = "absent"
+)
+
+// CreatePostgresDatabaseInput creates a database on a Postgres service.
+type CreatePostgresDatabaseInput struct {
+	Name string `json:"name"`
+	// Owner is the role that owns the database, granted ALL privileges on it.
+	// Defaults to "app" when empty.
+	Owner string `json:"owner,omitempty"`
+}
+
+// SetPostgresExtensionsInput replaces the extensions declared on a database.
+type SetPostgresExtensionsInput struct {
+	Extensions []string `json:"extensions"`
+}
+
+// PostgresUser is an additional login role on a managed PostgreSQL service.
+type PostgresUser struct {
+	Username string `json:"username"`
+	// Password is returned only by Create and RotatePassword — it is a one-time
+	// reveal and cannot be read back afterwards.
+	Password      string `json:"password,omitempty"`
+	ConnectionURL string `json:"conn_url,omitempty"`
+	// Replication reports whether the role may create replication slots and
+	// stream WAL, as an external logical-replication subscriber needs.
+	Replication bool `json:"replication"`
+	// InRoles are the role memberships the platform enforces declaratively:
+	// memberships granted manually via SQL but absent here are revoked on the
+	// next reconcile.
+	InRoles []string `json:"in_roles,omitempty"`
+}
+
+// CreatePostgresUserInput creates a login role on a Postgres service.
+type CreatePostgresUserInput struct {
+	Username    string   `json:"username"`
+	Replication bool     `json:"replication,omitempty"`
+	InRoles     []string `json:"in_roles,omitempty"`
+}
+
+// UpdatePostgresUserRolesInput replaces a user's role memberships. The list is
+// authoritative — omitted memberships are revoked.
+type UpdatePostgresUserRolesInput struct {
+	InRoles []string `json:"in_roles"`
+}
+
 // PostgresConnectionInfo contains the credentials for a PostgreSQL service.
 type PostgresConnectionInfo struct {
 	User          string `json:"user"`
@@ -238,6 +329,105 @@ type RedisConfig struct {
 	// Mode is one of "standalone", "replication", or "cluster".
 	Mode     string `json:"mode"`
 	Replicas int    `json:"replicas"`
+}
+
+// KafkaConfig holds configuration for a managed Kafka service. Kafka runs in
+// KRaft mode: a "standalone" service is one node carrying both roles, while a
+// "cluster" splits brokers and controllers into separate pools.
+type KafkaConfig struct {
+	StorageGB uint `json:"storage_gb,omitempty"`
+	// Mode is one of "standalone" or "cluster".
+	Mode string `json:"mode"`
+	// Brokers and Controllers are the node counts of each pool. Both are 1 in
+	// standalone mode, where a single node carries both roles.
+	Brokers     int    `json:"brokers"`
+	Controllers int    `json:"controllers"`
+	Version     string `json:"version"`
+}
+
+// HTTPGatewayConfig holds configuration for an HTTP gateway service. Its routes
+// are managed with the GatewayRoutes sub-client, not by replacing this struct.
+type HTTPGatewayConfig struct {
+	Routes []GatewayRoute `json:"routes,omitempty"`
+}
+
+// GatewayRoute forwards requests matching a path prefix to a backend service in
+// the same environment.
+type GatewayRoute struct {
+	Slug       string `json:"slug"`
+	PathPrefix string `json:"path_prefix"`
+	// BackendSlug is the slug of the target service in the same environment.
+	BackendSlug string `json:"backend_slug"`
+	BackendPort uint   `json:"backend_port"`
+	// StripPrefix removes PathPrefix from the request path before forwarding.
+	StripPrefix bool `json:"strip_prefix"`
+	// Priority orders overlapping prefixes; higher wins.
+	Priority int `json:"priority"`
+}
+
+// GatewayRouteInput is the request body for creating or updating a route.
+type GatewayRouteInput struct {
+	PathPrefix  string `json:"path_prefix"`
+	BackendSlug string `json:"backend_slug"`
+	BackendPort uint   `json:"backend_port"`
+	StripPrefix bool   `json:"strip_prefix"`
+	Priority    int    `json:"priority"`
+}
+
+// IPsecGatewayConfig holds configuration for a site-to-site VPN gateway. The
+// gateway terminates IKEv2 on a fixed public address, because counterparties
+// pin the peer address in firewall rules that outlive any pod.
+type IPsecGatewayConfig struct {
+	PublicIPSlug string `json:"public_ip_slug,omitempty"`
+	PublicIP     string `json:"public_ip,omitempty"`
+	// LocalSubnets are the ranges this environment presents to counterparties.
+	// Empty on creation seeds it with the gateway's own address.
+	LocalSubnets []string `json:"local_subnets,omitempty"`
+	Image        string   `json:"image,omitempty"`
+	// VNI is the gateway's overlay identifier, allocated by the platform and
+	// fixed for the gateway's life.
+	VNI         int32             `json:"vni,omitempty"`
+	Connections []IPsecConnection `json:"connections,omitempty"`
+}
+
+// IPsecConnection is one tunnel to a counterparty.
+//
+// The pre-shared key is write-only: it is stored encrypted and never read back,
+// so this struct reports only whether one is set.
+type IPsecConnection struct {
+	Slug          string   `json:"slug"`
+	Name          string   `json:"name"`
+	RemoteGateway string   `json:"remote_gateway"`
+	RemoteSubnets []string `json:"remote_subnets"`
+	// LocalSubnets narrows the gateway's set for this connection. Empty inherits.
+	LocalSubnets []string  `json:"local_subnets,omitempty"`
+	LocalID      string    `json:"local_id,omitempty"`
+	RemoteID     string    `json:"remote_id,omitempty"`
+	IKEProposal  string    `json:"ike_proposal,omitempty"`
+	ESPProposal  string    `json:"esp_proposal,omitempty"`
+	IKELifetime  string    `json:"ike_lifetime,omitempty"`
+	Lifetime     string    `json:"lifetime,omitempty"`
+	StartAction  string    `json:"start_action,omitempty"`
+	HasPSK       bool      `json:"has_psk"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// IPsecConnectionInput is the request body for creating or updating a tunnel.
+// PSK is accepted here on creation only; changing an existing key is a separate
+// call (RotatePSK), so a settings edit cannot blank a key by omitting it.
+type IPsecConnectionInput struct {
+	Name          string   `json:"name"`
+	RemoteGateway string   `json:"remote_gateway"`
+	RemoteSubnets []string `json:"remote_subnets"`
+	LocalSubnets  []string `json:"local_subnets,omitempty"`
+	LocalID       string   `json:"local_id,omitempty"`
+	RemoteID      string   `json:"remote_id,omitempty"`
+	PSK           string   `json:"psk,omitempty"`
+	IKEProposal   string   `json:"ike_proposal,omitempty"`
+	ESPProposal   string   `json:"esp_proposal,omitempty"`
+	IKELifetime   string   `json:"ike_lifetime,omitempty"`
+	Lifetime      string   `json:"lifetime,omitempty"`
+	StartAction   string   `json:"start_action,omitempty"`
 }
 
 // IngressPort is an external network endpoint for a service.
@@ -291,6 +481,10 @@ type CreateServiceInput struct {
 	Redis      *RedisInput      `json:"redis_svc,omitempty"`
 	S3Bucket   *S3BucketInput   `json:"s3_bucket_svc,omitempty"`
 	StaticSite *StaticSiteInput `json:"static_site_svc,omitempty"`
+	Kafka      *KafkaInput      `json:"kafka_svc,omitempty"`
+	// IPsecGateway configures a VPN gateway. A gateway is billed per tunnel and
+	// has a fixed footprint, so VCPUs and Memory do not apply to it.
+	IPsecGateway *IPsecGatewayInput `json:"ipsec_gateway_svc,omitempty"`
 }
 
 // StaticSiteInput configures a static site service on creation. A static site
@@ -432,6 +626,27 @@ type RedisInput struct {
 	// Mode is one of "standalone", "replication", or "cluster".
 	Mode     string `json:"mode,omitempty"`
 	Replicas int    `json:"replicas,omitempty"`
+}
+
+// KafkaInput configures a Kafka service on creation.
+type KafkaInput struct {
+	StorageGB uint64 `json:"storage_gb,omitempty"`
+	// Mode is one of "standalone" or "cluster". Standalone pins both node
+	// counts to 1; the platform ignores whatever is sent for them.
+	Mode string `json:"mode,omitempty"`
+	// Brokers and Controllers apply to cluster mode only. Controllers should be
+	// odd so the KRaft quorum can tolerate a failure.
+	Brokers     int    `json:"brokers,omitempty"`
+	Controllers int    `json:"controllers,omitempty"`
+	Version     string `json:"version,omitempty"`
+}
+
+// IPsecGatewayInput configures a VPN gateway on creation. The strongSwan image
+// is platform-supplied and deliberately not accepted from the client.
+type IPsecGatewayInput struct {
+	// LocalSubnets is optional; empty seeds it with the gateway's own allocated
+	// address.
+	LocalSubnets []string `json:"local_subnets,omitempty"`
 }
 
 // UpdateServiceInput is the request body for patching a service.
