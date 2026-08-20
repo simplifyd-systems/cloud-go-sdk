@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"strconv"
@@ -619,7 +620,14 @@ func (s *ServicesClient) ConnectShellWithOptions(
 		return fmt.Errorf("building shell URL: %w", err)
 	}
 
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, wsURL, nil)
+	// The handshake is an ordinary HTTP request, so it carries the same
+	// identification as every other call rather than gorilla's default.
+	var handshakeHeader http.Header
+	if s.client.userAgent != "" {
+		handshakeHeader = http.Header{"User-Agent": []string{s.client.userAgent}}
+	}
+
+	conn, _, err := websocket.DefaultDialer.DialContext(ctx, wsURL, handshakeHeader)
 	if err != nil {
 		return fmt.Errorf("connecting to shell: %w", err)
 	}

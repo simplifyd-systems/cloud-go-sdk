@@ -263,3 +263,82 @@ func (r *RegistryClient) deleteArtifactPath(ctx context.Context, q url.Values) (
 	}
 	return resp.Deleted, nil
 }
+
+// ── registry retention ────────────────────────────────────────────────────────
+
+// Retention returns the client for the registry's image retention policy.
+func (r *RegistryClient) Retention() *RetentionClient {
+	return &RetentionClient{client: r.client, base: r.base() + "/retention"}
+}
+
+// RetentionClient manages the image retention policy of a workspace registry.
+type RetentionClient struct {
+	client *Client
+	base   string
+}
+
+// Get returns the stored policy. A workspace that never configured one gets a
+// disabled policy with no rules, which deletes nothing.
+func (t *RetentionClient) Get(ctx context.Context) (*RetentionPolicy, error) {
+	var policy RetentionPolicy
+	if err := t.client.get(ctx, t.base, &policy); err != nil {
+		return nil, err
+	}
+	return &policy, nil
+}
+
+// Set replaces the policy wholesale. Rules are positional and unioned — a tag
+// survives if any rule keeps it — so there is no coherent partial update.
+func (t *RetentionClient) Set(ctx context.Context, policy RetentionPolicy) (*RetentionPolicy, error) {
+	var out RetentionPolicy
+	if err := t.client.put(ctx, t.base, policy, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// Preview reports what a policy would delete without deleting anything. Pass a
+// policy to preview an unsaved one, or nil to preview the stored policy.
+func (t *RetentionClient) Preview(ctx context.Context, policy *RetentionPolicy) (*RetentionRun, error) {
+	var out RetentionRun
+	var body interface{}
+	if policy != nil {
+		body = policy
+	}
+	if err := t.client.post(ctx, t.base+"/preview", body, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// Run applies the stored policy immediately. Disk is reclaimed by the
+// registry's garbage collection rather than by the run itself, so metered
+// storage falls on the next sweep.
+func (t *RetentionClient) Run(ctx context.Context) (*RetentionRun, error) {
+	var out RetentionRun
+	if err := t.client.post(ctx, t.base+"/run", nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// Runs returns the retention run history, newest first.
+func (t *RetentionClient) Runs(ctx context.Context) ([]RetentionRun, error) {
+	var resp struct {
+		Runs  []RetentionRun `json:"runs"`
+		Total int            `json:"total"`
+	}
+	if err := t.client.get(ctx, t.base+"/runs", &resp); err != nil {
+		return nil, err
+	}
+	return resp.Runs, nil
+}
+
+// GetRun returns one run with its per-tag detail.
+func (t *RetentionClient) GetRun(ctx context.Context, slug string) (*RetentionRun, error) {
+	var out RetentionRun
+	if err := t.client.get(ctx, t.base+"/runs/"+url.PathEscape(slug), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}

@@ -29,11 +29,27 @@ import (
 // DefaultBaseURL is the Simplifyd Cloud API endpoint.
 const DefaultBaseURL = "https://api.cloud.simplifyd.com"
 
+// Version is the SDK's own version, used to build the default User-Agent.
+// Keep it in step with the module's release tag — it is what the API sees when
+// a caller does not override it. A program with a build-time version of its own
+// should send that instead, via WithUserAgent.
+const Version = "0.1.20"
+
+// DefaultUserAgent identifies SDK traffic to the API.
+//
+// It matters beyond politeness: a session opened with an email and password is
+// recorded and shown to the user in account settings, and a request with no
+// User-Agent is listed there as an unrecognised device. Naming the client is
+// what lets someone reviewing their sessions tell their own command line apart
+// from a browser they do not recognise.
+var DefaultUserAgent = "edge-cli/" + Version
+
 // Client is the Simplifyd Cloud API client.
 // Use NewClient to construct one.
 type Client struct {
 	baseURL    string
 	token      string
+	userAgent  string
 	httpClient *http.Client
 }
 
@@ -49,6 +65,15 @@ func WithToken(token string) Option {
 // WithBaseURL overrides the default API base URL.
 func WithBaseURL(url string) Option {
 	return func(c *Client) { c.baseURL = strings.TrimRight(url, "/") }
+}
+
+// WithUserAgent overrides the User-Agent sent with every request.
+//
+// Callers that are not the CLI should set this — the MCP server and the
+// Terraform provider both embed this SDK, and traffic from either is misread as
+// a command line otherwise. Include a version: "cloud-mcp/1.4.0".
+func WithUserAgent(ua string) Option {
+	return func(c *Client) { c.userAgent = ua }
 }
 
 // WithHTTPClient replaces the default http.Client used for all requests.
@@ -71,6 +96,7 @@ func WithTimeout(d time.Duration) Option {
 func NewClient(opts ...Option) *Client {
 	c := &Client{
 		baseURL:    DefaultBaseURL,
+		userAgent:  DefaultUserAgent,
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 	for _, opt := range opts {
@@ -176,6 +202,9 @@ func (c *Client) newRequest(ctx context.Context, method, path string, body inter
 		req.Header.Set("Content-Type", "application/json")
 	}
 	req.Header.Set("Accept", "application/json")
+	if c.userAgent != "" {
+		req.Header.Set("User-Agent", c.userAgent)
+	}
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
@@ -261,6 +290,7 @@ func (c *Client) streamLines(ctx context.Context, path string, fn func(string)) 
 	sc := &Client{
 		baseURL:    c.baseURL,
 		token:      c.token,
+		userAgent:  c.userAgent,
 		httpClient: &http.Client{},
 	}
 	req, err := sc.newRequest(ctx, http.MethodGet, path, nil)

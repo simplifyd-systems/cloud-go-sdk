@@ -842,3 +842,65 @@ type CreateTokenOptions struct {
 type createNameRequest struct {
 	Name string `json:"name"`
 }
+
+// ── Registry retention ────────────────────────────────────────────────────────
+
+// Retention policy kinds. Rules are unioned: a tag survives if any matching
+// rule keeps it.
+const (
+	// RetentionKeepRecentN keeps the N most recently pushed images.
+	RetentionKeepRecentN = "keep_recent_n"
+	// RetentionKeepPushedWithin keeps images pushed in the last N days.
+	RetentionKeepPushedWithin = "keep_pushed_within"
+	// RetentionKeepPulledWithin keeps images pulled in the last N days. An
+	// image that was never pulled is not kept by this rule.
+	RetentionKeepPulledWithin = "keep_pulled_within"
+)
+
+// RetentionRule is one clause of a retention policy. Patterns are globs, where
+// "**" also crosses "/" so it can cover nested repository paths.
+type RetentionRule struct {
+	RepositoryPattern string   `json:"repository_pattern"`
+	TagPattern        string   `json:"tag_pattern"`
+	TagExclude        []string `json:"tag_exclude,omitempty"`
+	PolicyKind        string   `json:"policy_kind"`
+	Threshold         int      `json:"threshold"`
+}
+
+// RetentionPolicy is a workspace registry's retention configuration. It is
+// disabled by default and deletes nothing until it is enabled.
+type RetentionPolicy struct {
+	Enabled bool `json:"enabled"`
+	// ProtectMovingTags shields tags like "latest" and "main" from deletion.
+	ProtectMovingTags bool            `json:"protect_moving_tags"`
+	Rules             []RetentionRule `json:"rules"`
+}
+
+// RetentionRunItem is one tag's outcome in a retention run. Action is one of
+// "deleted", "would_delete", "skipped_in_use" or "failed"; an image a service
+// is deployed from is always skipped, whatever the rules say.
+type RetentionRunItem struct {
+	Repository string `json:"repository"`
+	Tag        string `json:"tag"`
+	Digest     string `json:"digest"`
+	SizeBytes  int64  `json:"size_bytes"`
+	Action     string `json:"action"`
+	Reason     string `json:"reason"`
+}
+
+// RetentionRun is one execution of a retention policy, or a preview of one.
+type RetentionRun struct {
+	Slug             string     `json:"slug"`
+	Trigger          string     `json:"trigger"`
+	DryRun           bool       `json:"dry_run"`
+	StartedAt        time.Time  `json:"started_at"`
+	FinishedAt       *time.Time `json:"finished_at,omitempty"`
+	Status           string     `json:"status"`
+	Error            string     `json:"error,omitempty"`
+	ArtifactsDeleted int        `json:"artifacts_deleted"`
+	TagsDeleted      int        `json:"tags_deleted"`
+	// BytesFreedEstimate sums whole-image sizes, so shared layers are counted
+	// once per image and the figure overstates the real saving.
+	BytesFreedEstimate int64              `json:"bytes_freed_estimate"`
+	Items              []RetentionRunItem `json:"items,omitempty"`
+}
