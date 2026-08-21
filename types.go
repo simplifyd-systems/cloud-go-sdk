@@ -214,8 +214,11 @@ type DockerConfig struct {
 
 // PostgresConfig holds configuration for a managed PostgreSQL service.
 type PostgresConfig struct {
-	Image          string                 `json:"image"`
-	Tag            string                 `json:"tag"`
+	Image string `json:"image"`
+	Tag   string `json:"tag"`
+	// StorageGB is the provisioned volume size. Mode has no counterpart here:
+	// the API accepts it on creation but never reports it back.
+	StorageGB      uint                   `json:"storage_gb,omitempty"`
 	ConnectionInfo PostgresConnectionInfo `json:"connection_info"`
 	Parameters     map[string]string      `json:"parameters,omitempty"`
 }
@@ -327,8 +330,9 @@ type PostgresConnectionInfo struct {
 // RedisConfig holds configuration for a managed Redis service.
 type RedisConfig struct {
 	// Mode is one of "standalone", "replication", or "cluster".
-	Mode     string `json:"mode"`
-	Replicas int    `json:"replicas"`
+	Mode      string `json:"mode"`
+	Replicas  int    `json:"replicas"`
+	StorageGB uint   `json:"storage_gb,omitempty"`
 }
 
 // KafkaConfig holds configuration for a managed Kafka service. Kafka runs in
