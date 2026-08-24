@@ -368,6 +368,9 @@ type MySQLConfig struct {
 
 	// Backup is the scheduled-backup configuration, nil when backups are off.
 	Backup *MySQLBackupConfig `json:"backup,omitempty"`
+
+	// Restore records the dump this service was seeded from, nil if it was not.
+	Restore *MySQLRestoreConfig `json:"restore,omitempty"`
 }
 
 // MySQLBackupFrequency is how often a scheduled backup runs. The platform
@@ -406,6 +409,45 @@ type MySQLBackupInput struct {
 	Region          string `json:"region,omitempty"`
 	AccessKeyID     string `json:"access_key_id,omitempty"`
 	SecretAccessKey string `json:"secret_access_key,omitempty"`
+}
+
+// MySQLRestoreInput seeds a new MySQL service from an existing dump.
+//
+// It can only be given at creation. The operator loads the dump when the
+// cluster bootstraps and ignores the field afterwards, so there is no way to
+// restore into a database that already exists — recovering means creating a new
+// service from a backup and moving traffic to it.
+//
+// Give exactly one source: either BucketSvcSlug or an explicit bucket with
+// credentials.
+type MySQLRestoreInput struct {
+	// Path is the path to one dump, not the backup root. A schedule writes each
+	// dump under its own sub-path; pointing at the root loads nothing and
+	// reports success.
+	Path string `json:"path"`
+
+	// BucketSvcSlug names a Simplifyd bucket service in the same project and
+	// environment. This is the usual case — restoring from the bucket the
+	// database was backed up into.
+	BucketSvcSlug string `json:"bucket_svc_slug,omitempty"`
+
+	BucketName      string `json:"bucket_name,omitempty"`
+	EndpointURL     string `json:"endpoint_url,omitempty"`
+	Region          string `json:"region,omitempty"`
+	AccessKeyID     string `json:"access_key_id,omitempty"`
+	SecretAccessKey string `json:"secret_access_key,omitempty"`
+}
+
+// MySQLRestoreConfig reports what a service was seeded from, if anything. It is
+// historical: the dump was loaded at bootstrap and changing it does nothing.
+// Credentials are never returned.
+type MySQLRestoreConfig struct {
+	BucketName     string `json:"bucket_name,omitempty"`
+	Path           string `json:"path,omitempty"`
+	BucketSvcSlug  string `json:"bucket_svc_slug,omitempty"`
+	EndpointURL    string `json:"endpoint_url,omitempty"`
+	Region         string `json:"region,omitempty"`
+	HasCredentials bool   `json:"has_credentials"`
 }
 
 // MySQLBackupConfig is the backup configuration reported on a MySQL service.
@@ -735,6 +777,9 @@ type MySQLInput struct {
 	// billed pod.
 	RouterInstances int    `json:"router_instances,omitempty"`
 	Version         string `json:"version,omitempty"`
+
+	// Restore seeds the new database from an existing dump. Creation-time only.
+	Restore *MySQLRestoreInput `json:"restore,omitempty"`
 }
 
 // IPsecGatewayInput configures a VPN gateway on creation. The strongSwan image
