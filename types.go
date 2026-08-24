@@ -141,6 +141,7 @@ const (
 	ServiceTypeStaticSite    ServiceType = "static_site"
 	ServiceTypeKafka         ServiceType = "kafka"
 	ServiceTypeIPsecGateway  ServiceType = "ipsec_gateway"
+	ServiceTypeMySQL         ServiceType = "mysql"
 )
 
 // ServiceStatus is the current lifecycle state of a service.
@@ -170,6 +171,7 @@ type Service struct {
 	Postgres     *PostgresConfig     `json:"postgres_svc,omitempty"`
 	Redis        *RedisConfig        `json:"redis_svc,omitempty"`
 	Kafka        *KafkaConfig        `json:"kafka_svc,omitempty"`
+	MySQL        *MySQLConfig        `json:"mysql_svc,omitempty"`
 	HTTPGateway  *HTTPGatewayConfig  `json:"http_gateway_svc,omitempty"`
 	IPsecGateway *IPsecGatewayConfig `json:"ipsec_gateway_svc,omitempty"`
 
@@ -349,6 +351,30 @@ type KafkaConfig struct {
 	Version     string `json:"version"`
 }
 
+// MySQLConfig holds configuration for a managed MySQL service. MySQL runs as an
+// InnoDB Cluster: Instances server pods fronted by RouterInstances stateless
+// router pods. Clients connect through the router, never to a server directly.
+type MySQLConfig struct {
+	StorageGB uint `json:"storage_gb,omitempty"`
+	// Instances is the number of MySQL server pods. One is a valid single-member
+	// cluster with no high availability.
+	Instances int `json:"instances"`
+	// RouterInstances is the number of router pods. They are ordinary pods and
+	// are billed as such, so a 3-server cluster with 1 router is 4 billed pods.
+	RouterInstances int    `json:"router_instances"`
+	Version         string `json:"version"`
+
+	ConnectionInfo *MySQLConnectionInfo `json:"connection_info,omitempty"`
+}
+
+// MySQLConnectionInfo carries the credentials for a MySQL service. The URL
+// targets the router's read-write port.
+type MySQLConnectionInfo struct {
+	User          string `json:"user"`
+	Password      string `json:"password"`
+	ConnectionURL string `json:"connection_url"`
+}
+
 // HTTPGatewayConfig holds configuration for an HTTP gateway service. Its routes
 // are managed with the GatewayRoutes sub-client, not by replacing this struct.
 type HTTPGatewayConfig struct {
@@ -486,6 +512,7 @@ type CreateServiceInput struct {
 	S3Bucket   *S3BucketInput   `json:"s3_bucket_svc,omitempty"`
 	StaticSite *StaticSiteInput `json:"static_site_svc,omitempty"`
 	Kafka      *KafkaInput      `json:"kafka_svc,omitempty"`
+	MySQL      *MySQLInput      `json:"mysql_svc,omitempty"`
 	// IPsecGateway configures a VPN gateway. A gateway is billed per tunnel and
 	// has a fixed footprint, so VCPUs and Memory do not apply to it.
 	IPsecGateway *IPsecGatewayInput `json:"ipsec_gateway_svc,omitempty"`
@@ -643,6 +670,19 @@ type KafkaInput struct {
 	Brokers     int    `json:"brokers,omitempty"`
 	Controllers int    `json:"controllers,omitempty"`
 	Version     string `json:"version,omitempty"`
+}
+
+// MySQLInput configures a MySQL service on creation.
+type MySQLInput struct {
+	StorageGB uint64 `json:"storage_gb,omitempty"`
+	// Instances is the number of MySQL server pods. Group Replication needs a
+	// majority to accept writes, so an even count costs a pod without buying
+	// failure tolerance — use 1, 3, 5, 7 or 9.
+	Instances int `json:"instances,omitempty"`
+	// RouterInstances is the number of router pods, defaulting to 1. Each is a
+	// billed pod.
+	RouterInstances int    `json:"router_instances,omitempty"`
+	Version         string `json:"version,omitempty"`
 }
 
 // IPsecGatewayInput configures a VPN gateway on creation. The strongSwan image
