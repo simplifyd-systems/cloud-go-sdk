@@ -115,6 +115,21 @@ func (s *ServicesClient) UpdatePostgresParameters(
 	return &parameters, nil
 }
 
+// ── managed MySQL: backups ───────────────────────────────────────────────────
+
+// ConfigureMySQLBackup sets up, changes, or turns off scheduled backups for a
+// managed MySQL service.
+//
+// The change is recorded but does not reach the cluster until the service is
+// deployed, the same as any other spec change.
+func (s *ServicesClient) ConfigureMySQLBackup(
+	ctx context.Context,
+	svcSlug string,
+	input MySQLBackupInput,
+) error {
+	return s.client.put(ctx, s.svcPath(svcSlug)+"/mysql/backup", input, nil)
+}
+
 // ── managed PostgreSQL: databases, extensions, users ─────────────────────────
 
 // ListPostgresDatabases returns the additional databases on a Postgres service.

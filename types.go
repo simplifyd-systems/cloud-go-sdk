@@ -365,6 +365,58 @@ type MySQLConfig struct {
 	Version         string `json:"version"`
 
 	ConnectionInfo *MySQLConnectionInfo `json:"connection_info,omitempty"`
+
+	// Backup is the scheduled-backup configuration, nil when backups are off.
+	Backup *MySQLBackupConfig `json:"backup,omitempty"`
+}
+
+// MySQLBackupFrequency is how often a scheduled backup runs. The platform
+// offers presets rather than cron expressions; times are UTC.
+type MySQLBackupFrequency string
+
+const (
+	// MySQLBackupDaily runs at 02:00 UTC.
+	MySQLBackupDaily MySQLBackupFrequency = "daily"
+	// MySQLBackupTwiceDaily runs at 02:00 and 14:00 UTC.
+	MySQLBackupTwiceDaily MySQLBackupFrequency = "twice_daily"
+	// MySQLBackupWeekly runs on Sunday at 02:00 UTC.
+	MySQLBackupWeekly MySQLBackupFrequency = "weekly"
+)
+
+// MySQLBackupInput configures scheduled backups for a MySQL service.
+//
+// Backups are logical dumps taken on a schedule, not continuous archiving:
+// recovery points are the dumps that have run, and there is no point-in-time
+// recovery. Restoring creates a new service rather than rewinding this one.
+//
+// Give exactly one destination — either BucketSvcSlug or an explicit bucket
+// with credentials. An empty Frequency turns backups off and clears the stored
+// credentials; dumps already written are left alone.
+type MySQLBackupInput struct {
+	Frequency MySQLBackupFrequency `json:"frequency"`
+
+	// BucketSvcSlug names a Simplifyd bucket service to write to. It must be in
+	// the same project and environment as the database. Its credentials are read
+	// at each run, so rotating the bucket's keys does not break backups.
+	BucketSvcSlug string `json:"bucket_svc_slug,omitempty"`
+
+	// Explicit S3-compatible destination, used when BucketSvcSlug is empty.
+	BucketName      string `json:"bucket_name,omitempty"`
+	EndpointURL     string `json:"endpoint_url,omitempty"`
+	Region          string `json:"region,omitempty"`
+	AccessKeyID     string `json:"access_key_id,omitempty"`
+	SecretAccessKey string `json:"secret_access_key,omitempty"`
+}
+
+// MySQLBackupConfig is the backup configuration reported on a MySQL service.
+// Credentials are never returned; HasCredentials reports whether any are stored.
+type MySQLBackupConfig struct {
+	Frequency       MySQLBackupFrequency `json:"frequency,omitempty"`
+	BucketSvcSlug   string               `json:"bucket_svc_slug,omitempty"`
+	DestinationPath string               `json:"destination_path,omitempty"`
+	EndpointURL     string               `json:"endpoint_url,omitempty"`
+	Region          string               `json:"region,omitempty"`
+	HasCredentials  bool                 `json:"has_credentials"`
 }
 
 // MySQLConnectionInfo carries the credentials for a MySQL service. The URL
