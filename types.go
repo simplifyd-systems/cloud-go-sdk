@@ -1233,9 +1233,25 @@ type PresignVideoPartsInput struct {
 
 // VideoUploadedPart is the ETag the store returned for one part. All of them,
 // in order, are needed to assemble the object.
+//
+// Size is populated only when the store is reporting a part back to a resuming
+// client; it is not sent when completing an upload.
 type VideoUploadedPart struct {
 	PartNumber int    `json:"part_number"`
 	ETag       string `json:"etag"`
+	Size       int64  `json:"size,omitempty"`
+}
+
+// VideoUploadState is what an interrupted upload looks like from the store's
+// side: the shape it was registered with, and the parts that already arrived.
+// It is what ResumeUpload works from.
+type VideoUploadState struct {
+	VideoSlug string              `json:"video_slug"`
+	Key       string              `json:"key"`
+	Size      int64               `json:"size"`
+	PartSize  int64               `json:"part_size"`
+	PartCount int                 `json:"part_count"`
+	Uploaded  []VideoUploadedPart `json:"uploaded"`
 }
 
 // CompleteVideoUploadInput finishes an upload and queues encoding.
