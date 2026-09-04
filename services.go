@@ -549,6 +549,18 @@ func (s *ServicesClient) Configs(svcSlug string) *ConfigsClient {
 	}
 }
 
+// Volumes returns a VolumesClient for managing persistent volumes on the given
+// service.
+func (s *ServicesClient) Volumes(svcSlug string) *VolumesClient {
+	return &VolumesClient{
+		client:    s.client,
+		workspace: s.workspace,
+		project:   s.project,
+		env:       s.env,
+		svc:       svcSlug,
+	}
+}
+
 // Ingress returns an IngressClient for managing ingress ports on the given service.
 func (s *ServicesClient) Ingress(svcSlug string) *IngressClient {
 	return &IngressClient{

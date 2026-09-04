@@ -142,6 +142,10 @@ const (
 	ServiceTypeKafka         ServiceType = "kafka"
 	ServiceTypeIPsecGateway  ServiceType = "ipsec_gateway"
 	ServiceTypeMySQL         ServiceType = "mysql"
+	// ServiceTypeVideo is a video library: uploads are transcoded into an
+	// adaptive ladder and served from the platform's zero-rated address, so
+	// watching costs the viewer no data on supported networks.
+	ServiceTypeVideo ServiceType = "video"
 )
 
 // ServiceStatus is the current lifecycle state of a service.
@@ -178,6 +182,7 @@ type Service struct {
 	Variables           []Variable           `json:"variables,omitempty"`
 	Ingress             []IngressPort        `json:"ingress_ports,omitempty"`
 	Configs             []ServiceConfig      `json:"configs,omitempty"`
+	Volumes             []ServiceVolume      `json:"persistent_storages,omitempty"`
 	Changeset           []ChangesetEntry     `json:"changeset,omitempty"`
 	PrivateHostname     string               `json:"private_hostname,omitempty"`
 	PrivateAccessGrants []PrivateAccessGrant `json:"private_access_grants,omitempty"`
@@ -368,6 +373,9 @@ type MySQLConfig struct {
 
 	// Backup is the scheduled-backup configuration, nil when backups are off.
 	Backup *MySQLBackupConfig `json:"backup,omitempty"`
+
+	// Restore records the dump this service was seeded from, nil if it was not.
+	Restore *MySQLRestoreConfig `json:"restore,omitempty"`
 }
 
 // MySQLBackupFrequency is how often a scheduled backup runs. The platform
@@ -406,6 +414,45 @@ type MySQLBackupInput struct {
 	Region          string `json:"region,omitempty"`
 	AccessKeyID     string `json:"access_key_id,omitempty"`
 	SecretAccessKey string `json:"secret_access_key,omitempty"`
+}
+
+// MySQLRestoreInput seeds a new MySQL service from an existing dump.
+//
+// It can only be given at creation. The operator loads the dump when the
+// cluster bootstraps and ignores the field afterwards, so there is no way to
+// restore into a database that already exists — recovering means creating a new
+// service from a backup and moving traffic to it.
+//
+// Give exactly one source: either BucketSvcSlug or an explicit bucket with
+// credentials.
+type MySQLRestoreInput struct {
+	// Path is the path to one dump, not the backup root. A schedule writes each
+	// dump under its own sub-path; pointing at the root loads nothing and
+	// reports success.
+	Path string `json:"path"`
+
+	// BucketSvcSlug names a Simplifyd bucket service in the same project and
+	// environment. This is the usual case — restoring from the bucket the
+	// database was backed up into.
+	BucketSvcSlug string `json:"bucket_svc_slug,omitempty"`
+
+	BucketName      string `json:"bucket_name,omitempty"`
+	EndpointURL     string `json:"endpoint_url,omitempty"`
+	Region          string `json:"region,omitempty"`
+	AccessKeyID     string `json:"access_key_id,omitempty"`
+	SecretAccessKey string `json:"secret_access_key,omitempty"`
+}
+
+// MySQLRestoreConfig reports what a service was seeded from, if anything. It is
+// historical: the dump was loaded at bootstrap and changing it does nothing.
+// Credentials are never returned.
+type MySQLRestoreConfig struct {
+	BucketName     string `json:"bucket_name,omitempty"`
+	Path           string `json:"path,omitempty"`
+	BucketSvcSlug  string `json:"bucket_svc_slug,omitempty"`
+	EndpointURL    string `json:"endpoint_url,omitempty"`
+	Region         string `json:"region,omitempty"`
+	HasCredentials bool   `json:"has_credentials"`
 }
 
 // MySQLBackupConfig is the backup configuration reported on a MySQL service.
@@ -541,6 +588,16 @@ type ServiceConfig struct {
 	MountPath string `json:"mount_path"`
 }
 
+// ServiceVolume is a persistent volume attached to a service. Unlike an
+// ephemeral storage attachment its contents survive the pod. See VolumesClient
+// for the two constraints that come with one.
+type ServiceVolume struct {
+	Slug      string `json:"slug"`
+	Name      string `json:"name"`
+	MountPath string `json:"mount_path"`
+	SizeGB    int    `json:"size_gb"`
+}
+
 // ChangesetEntry describes a pending (un-deployed) change on a service.
 type ChangesetEntry struct {
 	Type          string `json:"type"`
@@ -568,6 +625,23 @@ type CreateServiceInput struct {
 	// IPsecGateway configures a VPN gateway. A gateway is billed per tunnel and
 	// has a fixed footprint, so VCPUs and Memory do not apply to it.
 	IPsecGateway *IPsecGatewayInput `json:"ipsec_gateway_svc,omitempty"`
+	Video        *VideoInput        `json:"video_svc,omitempty"`
+}
+
+// VideoInput configures a video library on creation. Like a static site it runs
+// no container, so image, resources and replicas do not apply — the work is
+// done by encoder jobs, billed per source minute of what is uploaded.
+type VideoInput struct {
+	Name string `json:"name,omitempty"`
+	// MaxHeight caps the encoding ladder. Left at zero it defaults to 720p,
+	// which is the right ceiling for the devices and networks this serves:
+	// 1080p nearly doubles the stored bytes per video for a rung almost nobody
+	// on a cheap handset will select.
+	MaxHeight int `json:"max_height,omitempty"`
+	// KeepOriginal retains the uploaded master, at roughly double the storage,
+	// so a video can be encoded again — or given a new poster frame — without
+	// being uploaded a second time. Defaults to true.
+	KeepOriginal *bool `json:"keep_original,omitempty"`
 }
 
 // StaticSiteInput configures a static site service on creation. A static site
@@ -735,6 +809,9 @@ type MySQLInput struct {
 	// billed pod.
 	RouterInstances int    `json:"router_instances,omitempty"`
 	Version         string `json:"version,omitempty"`
+
+	// Restore seeds the new database from an existing dump. Creation-time only.
+	Restore *MySQLRestoreInput `json:"restore,omitempty"`
 }
 
 // IPsecGatewayInput configures a VPN gateway on creation. The strongSwan image
@@ -786,6 +863,21 @@ type UpdateConfigInput struct {
 	Name      string `json:"name"`
 	Content   string `json:"content"`
 	MountPath string `json:"mount_path"`
+}
+
+// CreateVolumeInput is the request body for attaching a persistent volume.
+type CreateVolumeInput struct {
+	Name      string `json:"name"`
+	MountPath string `json:"mount_path"`
+	SizeGB    int    `json:"size_gb"`
+}
+
+// UpdateVolumeInput is the request body for changing an attached volume. The
+// size may only be raised; see VolumesClient.Update.
+type UpdateVolumeInput struct {
+	Name      string `json:"name"`
+	MountPath string `json:"mount_path"`
+	SizeGB    int    `json:"size_gb"`
 }
 
 // ── Deployment ────────────────────────────────────────────────────────────────
@@ -999,4 +1091,274 @@ type RetentionRun struct {
 	// once per image and the figure overstates the real saving.
 	BytesFreedEstimate int64              `json:"bytes_freed_estimate"`
 	Items              []RetentionRunItem `json:"items,omitempty"`
+}
+
+// ── Video libraries ───────────────────────────────────────────────────────────
+
+// VideoLibrary is a video service: two buckets, a playback host, and the
+// settings that govern what the encoder produces.
+type VideoLibrary struct {
+	DisplayName string `json:"display_name"`
+	// SourceBucket holds the originals and is never served anonymously.
+	SourceBucket string `json:"source_bucket"`
+	// HLSBucket holds the encoder's output and is anonymously readable, which
+	// is what lets a player fetch it with no credentials.
+	HLSBucket string `json:"hls_bucket"`
+	Status    string `json:"status"`
+	// PlaybackURL is the origin every embed and playlist URL is built from. It
+	// resolves to the zero-rated ingress address, which is what makes watching
+	// free to the viewer.
+	PlaybackURL string `json:"playback_url,omitempty"`
+	// PlaybackDomain is served once its DNS points at DomainCNAMETarget.
+	PlaybackDomain    string `json:"playback_domain,omitempty"`
+	DomainStatus      string `json:"domain_status,omitempty"`
+	DomainCNAMETarget string `json:"domain_cname_target,omitempty"`
+	// MaxHeight is the tallest rung the ladder may produce, 720 by default.
+	MaxHeight int `json:"max_height"`
+	// KeepOriginal decides whether a video can be re-encoded, or its poster
+	// changed, without being uploaded again.
+	KeepOriginal bool      `json:"keep_original"`
+	VideoCount   int64     `json:"video_count"`
+	BytesUsed    int64     `json:"bytes_used"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// UpdateVideoLibraryInput changes a library's encoding settings.
+type UpdateVideoLibraryInput struct {
+	MaxHeight    int  `json:"max_height"`
+	KeepOriginal bool `json:"keep_original"`
+}
+
+// SetVideoPlaybackDomainInput attaches a custom playback hostname. An empty
+// domain detaches the current one.
+type SetVideoPlaybackDomainInput struct {
+	PlaybackDomain string `json:"playback_domain"`
+}
+
+// Video is one uploaded file and everything derived from it.
+type Video struct {
+	Slug        string `json:"slug"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	// Status is uploading, queued, processing, ready or failed.
+	Status string `json:"status"`
+	// StatusMessage carries the encoder's own words when something failed.
+	StatusMessage    string           `json:"status_message,omitempty"`
+	DurationMS       int64            `json:"duration_ms"`
+	Width            int              `json:"width"`
+	Height           int              `json:"height"`
+	SourceBytes      int64            `json:"source_bytes"`
+	HLSBytes         int64            `json:"hls_bytes"`
+	PosterURL        string           `json:"poster_url,omitempty"`
+	PosterOffsetMS   int64            `json:"poster_offset_ms,omitempty"`
+	StoryboardURL    string           `json:"storyboard_url,omitempty"`
+	StoryboardVTTURL string           `json:"storyboard_vtt_url,omitempty"`
+	PlaybackURL      string           `json:"playback_url,omitempty"`
+	EmbedURL         string           `json:"embed_url,omitempty"`
+	IframeSnippet    string           `json:"iframe_snippet,omitempty"`
+	ScriptSnippet    string           `json:"script_snippet,omitempty"`
+	Renditions       []VideoRendition `json:"renditions,omitempty"`
+	Tracks           []VideoTrack     `json:"tracks,omitempty"`
+	// Progress is the current encode's percentage, 0 when nothing is running.
+	Progress int `json:"progress_pct"`
+	// HasSource reports whether the original is still retained, which decides
+	// whether the video can be re-encoded or given a new poster.
+	HasSource   bool       `json:"has_source"`
+	PublishedAt *time.Time `json:"published_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+// VideoList is a page of a library's videos.
+type VideoList struct {
+	Videos []Video `json:"videos"`
+	Total  int64   `json:"total"`
+	Limit  int     `json:"limit"`
+	Offset int     `json:"offset"`
+}
+
+// VideoRendition is one rung the encoder actually produced.
+type VideoRendition struct {
+	Name      string `json:"name"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
+	VideoKbps int    `json:"video_kbps"`
+	AudioKbps int    `json:"audio_kbps"`
+	Bytes     int64  `json:"bytes"`
+	// MegabytesPerHour is what an hour at this rung costs the viewer, which on
+	// a metered connection is more useful than the pixel height.
+	MegabytesPerHour int `json:"megabytes_per_hour"`
+}
+
+// VideoTrack is a caption or subtitle file attached to a video.
+type VideoTrack struct {
+	Slug      string `json:"slug"`
+	Kind      string `json:"kind"`
+	Language  string `json:"language"`
+	Label     string `json:"label"`
+	URL       string `json:"url,omitempty"`
+	IsDefault bool   `json:"is_default"`
+}
+
+// RegisterVideoUploadInput begins an upload. The size is required up front so
+// the file can be rejected before any bytes move if it is over the limit.
+type RegisterVideoUploadInput struct {
+	Title    string `json:"title"`
+	Filename string `json:"filename"`
+	Size     int64  `json:"size"`
+}
+
+// VideoUploadPlan is what a client needs to put a file into the source bucket
+// without the bytes passing through the API.
+type VideoUploadPlan struct {
+	VideoSlug string            `json:"video_slug"`
+	UploadID  string            `json:"upload_id"`
+	Key       string            `json:"key"`
+	PartSize  int64             `json:"part_size"`
+	PartCount int               `json:"part_count"`
+	Parts     []VideoUploadPart `json:"parts"`
+	ExpiresAt time.Time         `json:"expires_at"`
+}
+
+// VideoUploadPart is one presigned PUT. PartNumber is 1-based.
+type VideoUploadPart struct {
+	PartNumber int    `json:"part_number"`
+	URL        string `json:"url"`
+}
+
+// PresignVideoPartsInput asks for a run of part URLs, inclusive at both ends.
+type PresignVideoPartsInput struct {
+	From int `json:"from"`
+	To   int `json:"to"`
+}
+
+// VideoUploadedPart is the ETag the store returned for one part. All of them,
+// in order, are needed to assemble the object.
+type VideoUploadedPart struct {
+	PartNumber int    `json:"part_number"`
+	ETag       string `json:"etag"`
+}
+
+// CompleteVideoUploadInput finishes an upload and queues encoding.
+type CompleteVideoUploadInput struct {
+	Parts []VideoUploadedPart `json:"parts"`
+}
+
+// UpdateVideoInput changes what a video is called.
+type UpdateVideoInput struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+}
+
+// SetVideoPosterInput names the moment to take the poster frame from.
+type SetVideoPosterInput struct {
+	PosterOffsetMS int64 `json:"poster_offset_ms"`
+}
+
+// AddVideoTrackInput uploads a WebVTT caption file inline.
+type AddVideoTrackInput struct {
+	Language string `json:"language"`
+	Label    string `json:"label"`
+	// Content is the WebVTT file, base64-encoded.
+	Content string `json:"content"`
+}
+
+// VideoAnalytics is the whole answer to "how is this video doing".
+type VideoAnalytics struct {
+	VideoSlug string `json:"video_slug,omitempty"`
+	From      string `json:"from"`
+	To        string `json:"to"`
+
+	Totals VideoAnalyticsTotals `json:"totals"`
+	// Daily is the series with no gaps: a day with no views is a zero row
+	// rather than a missing one.
+	Daily []VideoDailyStat `json:"daily"`
+	// Retention is the drop-off curve, 100 points.
+	Retention []VideoRetentionPoint `json:"retention,omitempty"`
+	// Carriers is the dimension no other video host can report: what share of
+	// watch time was free to the people who watched it, by carrier.
+	Carriers  []VideoCarrierStat  `json:"carriers,omitempty"`
+	Rungs     []VideoRungStat     `json:"rungs,omitempty"`
+	Referrers []VideoReferrerStat `json:"referrers,omitempty"`
+	TopVideos []VideoTopStat      `json:"top_videos,omitempty"`
+}
+
+// VideoAnalyticsTotals is the headline row.
+type VideoAnalyticsTotals struct {
+	Views         int64 `json:"views"`
+	UniqueViewers int64 `json:"unique_viewers"`
+	WatchSeconds  int64 `json:"watch_seconds"`
+	Completions   int64 `json:"completions"`
+	Stalls        int64 `json:"stalls"`
+	StallSeconds  int64 `json:"stall_seconds"`
+	Errors        int64 `json:"errors"`
+	// EstimatedBytes is rung bitrate x watch time, not a socket measurement.
+	EstimatedBytes        int64   `json:"estimated_bytes"`
+	ZeroRatedWatchSeconds int64   `json:"zero_rated_watch_seconds"`
+	ZeroRatedSharePct     float64 `json:"zero_rated_share_pct"`
+	CompletionRatePct     float64 `json:"completion_rate_pct"`
+	// StallRatePct is stalls per hundred views.
+	StallRatePct        float64 `json:"stall_rate_pct"`
+	AverageWatchSeconds float64 `json:"average_watch_seconds"`
+}
+
+// VideoDailyStat is one day of the series.
+type VideoDailyStat struct {
+	Day                   string `json:"day"` // YYYY-MM-DD
+	Views                 int64  `json:"views"`
+	UniqueViewers         int64  `json:"unique_viewers"`
+	WatchSeconds          int64  `json:"watch_seconds"`
+	Completions           int64  `json:"completions"`
+	Stalls                int64  `json:"stalls"`
+	StallSeconds          int64  `json:"stall_seconds"`
+	Errors                int64  `json:"errors"`
+	EstimatedBytes        int64  `json:"estimated_bytes"`
+	ZeroRatedWatchSeconds int64  `json:"zero_rated_watch_seconds"`
+}
+
+// VideoRetentionPoint is one percentage point of the runtime.
+type VideoRetentionPoint struct {
+	Pct     int     `json:"pct"`
+	Viewers int64   `json:"viewers"`
+	Share   float64 `json:"share_pct"`
+}
+
+// VideoCarrierStat is one carrier's slice of the audience.
+type VideoCarrierStat struct {
+	Tier          string `json:"tier"`
+	Name          string `json:"name,omitempty"`
+	ZeroRated     bool   `json:"zero_rated"`
+	Views         int64  `json:"views"`
+	UniqueViewers int64  `json:"unique_viewers"`
+	WatchSeconds  int64  `json:"watch_seconds"`
+	Stalls        int64  `json:"stalls"`
+	StallSeconds  int64  `json:"stall_seconds"`
+	// StallRatePct is stalls per hundred views on this carrier — the figure
+	// that says whether the ladder is tuned for the networks people are on.
+	StallRatePct   float64 `json:"stall_rate_pct"`
+	EstimatedBytes int64   `json:"estimated_bytes"`
+	SharePct       float64 `json:"share_pct"`
+}
+
+// VideoRungStat is how much watch time each rung carried.
+type VideoRungStat struct {
+	Rung             string  `json:"rung"`
+	WatchSeconds     int64   `json:"watch_seconds"`
+	SharePct         float64 `json:"share_pct"`
+	MegabytesPerHour int     `json:"megabytes_per_hour,omitempty"`
+}
+
+// VideoReferrerStat is one embedding site.
+type VideoReferrerStat struct {
+	Host  string `json:"host"`
+	Views int64  `json:"views"`
+}
+
+// VideoTopStat is one video in a library-wide ranking.
+type VideoTopStat struct {
+	Slug          string `json:"slug"`
+	Title         string `json:"title"`
+	PosterURL     string `json:"poster_url,omitempty"`
+	Views         int64  `json:"views"`
+	UniqueViewers int64  `json:"unique_viewers"`
+	WatchSeconds  int64  `json:"watch_seconds"`
 }
