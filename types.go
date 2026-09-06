@@ -775,6 +775,36 @@ type PostgresInput struct {
 	StorageGB uint64 `json:"storage_gb,omitempty"`
 	// Mode is one of "standalone" or "replication".
 	Mode string `json:"mode,omitempty"`
+
+	// RestoreFromService seeds the new database from another Postgres service's
+	// backups. Creation-time only, for the same reason MySQL restores are:
+	// recovery happens when the cluster bootstraps and is ignored afterwards.
+	RestoreFromService *PostgresRestoreFromServiceInput `json:"restore_from_service,omitempty"`
+}
+
+// PostgresRestoreFromServiceInput seeds a new Postgres service by replaying
+// another Postgres service's backup archive.
+//
+// The source service supplies the archive location, the provider and the
+// credentials, so none of them are repeated here. That also means the source
+// only has to have backups *configured* — its cluster does not have to be
+// healthy, or even hold any data. Recovering a database that was destroyed
+// works by pointing a new service at the wreck of the old one.
+//
+// Leave BackupID and TargetTime empty to recover to the end of the archived
+// WAL, which is the most recent point available. Give at most one of them.
+type PostgresRestoreFromServiceInput struct {
+	// SvcSlug names the Postgres service whose backups to restore from. It must
+	// be in the same workspace.
+	SvcSlug string `json:"svc_slug"`
+
+	// BackupID selects one base backup, e.g. "20260905T020000". Omit to use the
+	// latest.
+	BackupID string `json:"backup_id,omitempty"`
+
+	// TargetTime recovers to a point in time (RFC3339). It cannot be earlier
+	// than the archive's first recoverability point.
+	TargetTime string `json:"target_time,omitempty"`
 }
 
 // RedisInput configures a Redis service on creation.
