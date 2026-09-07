@@ -342,3 +342,14 @@ func (t *RetentionClient) GetRun(ctx context.Context, slug string) (*RetentionRu
 	}
 	return &out, nil
 }
+
+// Alerts returns the workspace's operational alerts: every service whose volume
+// has reached a utilisation threshold, worst first. Available to any workspace
+// member.
+func (w *WorkspaceClient) Alerts(ctx context.Context) (*WorkspaceAlerts, error) {
+	var a WorkspaceAlerts
+	if err := w.client.get(ctx, w.base()+"/alerts", &a); err != nil {
+		return nil, err
+	}
+	return &a, nil
+}

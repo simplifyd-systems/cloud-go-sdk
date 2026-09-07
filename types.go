@@ -1408,3 +1408,33 @@ type VideoTopStat struct {
 	UniqueViewers int64  `json:"unique_viewers"`
 	WatchSeconds  int64  `json:"watch_seconds"`
 }
+
+// VolumeAlert is a service whose persistent volume has reached a utilisation
+// threshold. Band is the threshold the volume is in now (50, 75 or 90);
+// AlertedBand is the one the workspace was last emailed about, which lags while
+// an alert is pending and holds while a recovered volume is still close to the
+// threshold it crossed.
+type VolumeAlert struct {
+	Service     string     `json:"service"`
+	ServiceName string     `json:"service_name"`
+	ServiceType string     `json:"service_type"`
+	Project     string     `json:"project"`
+	ProjectName string     `json:"project_name"`
+	Env         string     `json:"env"`
+	EnvName     string     `json:"env_name"`
+	UsedMiB     int32      `json:"used_mib"`
+	CapacityMiB int32      `json:"capacity_mib"`
+	UsedPercent float64    `json:"used_percent"`
+	Band        int16      `json:"band"`
+	AlertedBand int16      `json:"alerted_band"`
+	AlertedAt   *time.Time `json:"alerted_at,omitempty"`
+	MeasuredAt  time.Time  `json:"measured_at"`
+}
+
+// WorkspaceAlerts is the workspace alerts envelope. Volumes are the only kind
+// today; the response is a struct rather than a bare list so a second kind can
+// be added without breaking callers.
+type WorkspaceAlerts struct {
+	Success bool          `json:"success"`
+	Volumes []VolumeAlert `json:"volumes"`
+}
