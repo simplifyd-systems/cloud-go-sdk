@@ -9,12 +9,28 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-// LoginResponse is returned by Login.
+type loginMFARequest struct {
+	MFAToken string `json:"mfa_token"`
+	Code     string `json:"code"`
+}
+
+// LoginResponse is returned by Login and LoginMFA.
+//
+// When the account has two-factor authentication enabled, Login returns
+// MFARequired with no Token: the password step alone does not create a
+// session. Exchange MFAToken plus a TOTP or recovery code via LoginMFA to get
+// the response carrying the session JWT.
 type LoginResponse struct {
 	Token           string `json:"jwt"`
 	ActiveWorkspace string `json:"active_workspace"`
 	ActiveProject   string `json:"active_project"`
 	ActiveEnv       string `json:"active_env"`
+
+	// MFARequired reports that a second factor is still outstanding.
+	MFARequired bool `json:"mfa_required"`
+	// MFAToken is the short-lived (5 minute) proof that the password step
+	// succeeded, to be passed to LoginMFA. Set only when MFARequired.
+	MFAToken string `json:"mfa_token"`
 }
 
 // User represents an authenticated Simplifyd Cloud account.
@@ -698,6 +714,30 @@ type PublishStaticSiteInput struct {
 	Prune *bool `json:"prune,omitempty"`
 }
 
+// PublishStaticSiteArchiveInput names a zip already staged in the site's own
+// bucket for the server to expand.
+type PublishStaticSiteArchiveInput struct {
+	// Key is the archive's object key within the site's bucket.
+	Key string `json:"key"`
+	// Prune removes objects the archive does not contain, making the publish a
+	// full replace. Defaults to true server-side when nil.
+	Prune *bool `json:"prune,omitempty"`
+}
+
+// ArchivePublishOptions tunes PublishArchive.
+type ArchivePublishOptions struct {
+	// Prune removes objects the archive does not contain. Defaults to true.
+	Prune *bool
+	// Progress, when set, is called as the archive is uploaded.
+	Progress func(sent, total int64)
+}
+
+// PresignedUpload is a URL to PUT an object to directly, valid until ExpiresAt.
+type PresignedUpload struct {
+	URL       string    `json:"url"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
 // StaticSitePublishResult reports what a publish changed.
 type StaticSitePublishResult struct {
 	FilesUploaded int      `json:"files_uploaded"`
@@ -705,6 +745,12 @@ type StaticSitePublishResult struct {
 	BytesUploaded int64    `json:"bytes_uploaded"`
 	URL           string   `json:"url,omitempty"`
 	Paths         []string `json:"paths,omitempty"`
+	// FilesSkipped counts archive entries left out as archiver metadata
+	// (__MACOSX, .DS_Store and the like). Archive publishes only.
+	FilesSkipped int `json:"files_skipped,omitempty"`
+	// StrippedPrefix is the wrapping directory removed from every path, so an
+	// archive of dist/ still serves at the site root. Archive publishes only.
+	StrippedPrefix string `json:"stripped_prefix,omitempty"`
 }
 
 // StaticSiteObject describes one published file. A listing carries no content;

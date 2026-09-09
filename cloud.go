@@ -117,9 +117,28 @@ func (c *Client) Workspace(slug string) *WorkspaceClient {
 // Login authenticates with email + password and returns a JWT plus the caller's
 // active workspace/project/env slugs. The JWT can be passed to WithToken for
 // subsequent client calls.
+//
+// An account with two-factor authentication enabled gets no JWT here: the
+// response has MFARequired set and carries an MFAToken to finish with
+// LoginMFA. Callers must check MFARequired before treating Token as a session,
+// or they will store an empty credential.
 func (c *Client) Login(ctx context.Context, email, password string) (*LoginResponse, error) {
 	var resp LoginResponse
 	err := c.post(ctx, "/v1/auth/accounts/login", loginRequest{Username: email, Password: password}, &resp)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// LoginMFA completes a login that came back with MFARequired, exchanging the
+// MFAToken from Login and a TOTP or recovery code for a session JWT.
+//
+// The MFAToken is valid for five minutes, so a rejected code can be retried
+// against the same token without repeating the password step.
+func (c *Client) LoginMFA(ctx context.Context, mfaToken, code string) (*LoginResponse, error) {
+	var resp LoginResponse
+	err := c.post(ctx, "/v1/auth/accounts/login/mfa", loginMFARequest{MFAToken: mfaToken, Code: code}, &resp)
 	if err != nil {
 		return nil, err
 	}
