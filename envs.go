@@ -47,6 +47,27 @@ func (e *EnvClient) Delete(ctx context.Context) error {
 	return e.client.delete(ctx, e.base(), nil)
 }
 
+// PublishableVariables returns the values in the environment that a template
+// marked publishable, such as a Supabase URL and anon key: values meant for
+// browser code, which the API returns at any time. Every other variable's
+// value is never returned. A variable stops being publishable once its value
+// is edited.
+func (e *EnvClient) PublishableVariables(ctx context.Context) ([]PublishableVariable, error) {
+	var out []PublishableVariable
+	if err := e.client.get(ctx, e.base()+"/publishable-variables", &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// PublishableVariable is a publishable service variable, references resolved.
+type PublishableVariable struct {
+	ServiceSlug string `json:"service_slug"`
+	Service     string `json:"service"`
+	Name        string `json:"name"`
+	Value       string `json:"value"`
+}
+
 // ── env-level variables ───────────────────────────────────────────────────────
 
 // Variables returns the EnvVariablesClient for environment-level shared variables.
