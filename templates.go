@@ -78,8 +78,9 @@ func (c *TemplatesClient) Get(ctx context.Context, templateSlug string) (*Templa
 //
 // The services are created, not started: deploy each as with any new service.
 // Secrets the template generates are generated here, once, for this
-// deployment. Either every service is created or none is. It fails if a
-// service would share a name with one already in the environment.
+// deployment; the ones the template marks publishable are returned in
+// Outputs. Either every service is created or none is. It fails if a service
+// would share a name with one already in the environment.
 func (c *TemplatesClient) Deploy(ctx context.Context, templateSlug string, in DeployTemplateInput) (*TemplateDeployResult, error) {
 	var out TemplateDeployResult
 	if err := c.client.post(ctx, c.base()+"/"+templateSlug+"/deploy", in, &out); err != nil {
@@ -92,11 +93,27 @@ func (c *TemplatesClient) Deploy(ctx context.Context, templateSlug string, in De
 type DeployTemplateInput struct {
 	Project string `json:"project"`
 	Env     string `json:"env"`
+	// InitSQL, for a template that takes it (see Template.TakesInitSQL), runs
+	// once, when the template's database is first created: all of it or, on
+	// any error, none of it, in which case the database's logs say why.
+	InitSQL string `json:"init_sql,omitempty"`
 }
 
 // TemplateDeployResult lists the services a deploy created.
 type TemplateDeployResult struct {
 	Services []Service `json:"services"`
+	// Outputs are the values the template marks publishable, such as a
+	// Supabase URL and anon key: safe to put in a browser app. Every other
+	// value is only shown in the dashboard.
+	Outputs []TemplateDeployOutput `json:"outputs,omitempty"`
+}
+
+// TemplateDeployOutput is a publishable variable of a created service.
+type TemplateDeployOutput struct {
+	Service     string `json:"service"`
+	Name        string `json:"name"`
+	Value       string `json:"value"`
+	Description string `json:"description,omitempty"`
 }
 
 // Template is a set of services deployed together.
@@ -125,6 +142,8 @@ type TemplateService struct {
 	Postgres           *TemplatePostgresService `json:"postgres,omitempty"`
 	Ingress            []TemplateServiceIngress `json:"ingress,omitempty"`
 	PersistentStorages []TemplateServiceStorage `json:"persistent_storages,omitempty"`
+	// InitSQLPath is set on the service a deploy's init SQL is run on.
+	InitSQLPath string `json:"init_sql_path,omitempty"`
 }
 
 // TemplateDockerService is the image a docker service runs.
@@ -179,6 +198,17 @@ func (s TemplateService) Size() (vcpus, memoryMiB uint, diskGB int) {
 		diskGB += int(s.Postgres.StorageGB)
 	}
 	return vcpus, memoryMiB, diskGB
+}
+
+// TakesInitSQL reports whether a deploy of the template accepts InitSQL, and
+// the service it is run on.
+func (t Template) TakesInitSQL() (service string, ok bool) {
+	for _, s := range t.Services {
+		if s.InitSQLPath != "" {
+			return s.Key, true
+		}
+	}
+	return "", false
 }
 
 // Size returns the total the template's services are created with.

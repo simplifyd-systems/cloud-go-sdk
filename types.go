@@ -140,6 +140,12 @@ type Variable struct {
 	Slug  string `json:"slug"`
 	Name  string `json:"name"`
 	Value string `json:"value"`
+	// Sealed values are never returned; an unsealed service variable's value
+	// is read with Reveal. Service variables are sealed unless set otherwise.
+	Sealed bool `json:"sealed"`
+	// Publishable values are meant for browser code; see
+	// EnvClient.PublishableVariables.
+	Publishable bool `json:"publishable"`
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────
@@ -1065,8 +1071,9 @@ type updateMemberRoleRequest struct {
 // ── Variable inputs ───────────────────────────────────────────────────────────
 
 type setVariableRequest struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
+	Name   string `json:"name"`
+	Value  string `json:"value"`
+	Sealed *bool  `json:"sealed,omitempty"`
 }
 
 type bulkSetVariablesRequest struct {
