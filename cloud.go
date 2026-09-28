@@ -19,9 +19,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -129,6 +131,42 @@ func (c *Client) Login(ctx context.Context, email, password string) (*LoginRespo
 		return nil, err
 	}
 	return &resp, nil
+}
+
+// StartLoginPush sends a sign-in approval request to the phones on an account
+// whose login came back with MFARequired and "push" among its MFAMethods.
+// Show the returned Number to the user, then poll with PollLoginPush.
+func (c *Client) StartLoginPush(ctx context.Context, mfaToken string) (*PushChallenge, error) {
+	var resp PushChallenge
+	if err := c.post(ctx, "/v1/auth/accounts/login/mfa/push", map[string]string{"mfa_token": mfaToken}, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// PollLoginPush checks a sign-in approval. It returns the finished login with
+// state PushApproved — exactly once — or a nil response with PushPending,
+// PushDenied or PushExpired.
+func (c *Client) PollLoginPush(ctx context.Context, challenge *PushChallenge, mfaToken string) (*LoginResponse, string, error) {
+	var resp struct {
+		LoginResponse
+		Status string `json:"status"`
+	}
+	err := c.post(ctx, "/v1/auth/accounts/login/mfa/push/"+url.PathEscape(challenge.ChallengeID),
+		map[string]string{"mfa_token": mfaToken, "poll_token": challenge.PollToken}, &resp)
+	var apiErr *APIError
+	switch {
+	case err == nil && resp.Token != "":
+		return &resp.LoginResponse, PushApproved, nil
+	case err == nil:
+		return nil, PushPending, nil
+	case errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusForbidden:
+		return nil, PushDenied, nil
+	case errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusGone:
+		return nil, PushExpired, nil
+	default:
+		return nil, "", err
+	}
 }
 
 // LoginMFA completes a login that came back with MFARequired, exchanging the

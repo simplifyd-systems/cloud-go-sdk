@@ -31,7 +31,40 @@ type LoginResponse struct {
 	// MFAToken is the short-lived (5 minute) proof that the password step
 	// succeeded, to be passed to LoginMFA. Set only when MFARequired.
 	MFAToken string `json:"mfa_token"`
+	// MFAMethods lists the second factors the account can finish with, most
+	// convenient first: "push", "totp", "recovery". Empty from servers that
+	// predate push approvals, where a code is the only option.
+	MFAMethods []string `json:"mfa_methods,omitempty"`
 }
+
+// HasMFAMethod reports whether a login that requires MFA can be finished with
+// method.
+func (r *LoginResponse) HasMFAMethod(method string) bool {
+	for _, m := range r.MFAMethods {
+		if m == method {
+			return true
+		}
+	}
+	return false
+}
+
+// PushChallenge is a sign-in approval request sent to the user's phones.
+// Number is shown to the user, who taps the same number in the mobile app.
+type PushChallenge struct {
+	ChallengeID     string    `json:"challenge_id"`
+	PollToken       string    `json:"poll_token"`
+	Number          int       `json:"number"`
+	ExpiresAt       time.Time `json:"expires_at"`
+	DevicesNotified int       `json:"devices_notified"`
+}
+
+// Push challenge states returned by PollLoginPush.
+const (
+	PushPending  = "pending"
+	PushApproved = "approved"
+	PushDenied   = "denied"
+	PushExpired  = "expired"
+)
 
 // User represents an authenticated Simplifyd Cloud account.
 type User struct {
