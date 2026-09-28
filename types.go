@@ -168,6 +168,11 @@ const (
 	// adaptive ladder and served from the platform's zero-rated address, so
 	// watching costs the viewer no data on supported networks.
 	ServiceTypeVideo ServiceType = "video"
+	// ServiceTypeEmail is an email service: a Why.email account the platform
+	// runs for you. Apps send over SMTP or Why.email's API with the variables
+	// the service publishes, once a sending domain is verified. Billed per
+	// email delivered.
+	ServiceTypeEmail ServiceType = "email"
 )
 
 // ServiceStatus is the current lifecycle state of a service.
@@ -200,6 +205,7 @@ type Service struct {
 	MySQL        *MySQLConfig        `json:"mysql_svc,omitempty"`
 	HTTPGateway  *HTTPGatewayConfig  `json:"http_gateway_svc,omitempty"`
 	IPsecGateway *IPsecGatewayConfig `json:"ipsec_gateway_svc,omitempty"`
+	Email        *EmailConfig        `json:"email_svc,omitempty"`
 
 	Variables           []Variable           `json:"variables,omitempty"`
 	Ingress             []IngressPort        `json:"ingress_ports,omitempty"`
@@ -648,6 +654,9 @@ type CreateServiceInput struct {
 	// has a fixed footprint, so VCPUs and Memory do not apply to it.
 	IPsecGateway *IPsecGatewayInput `json:"ipsec_gateway_svc,omitempty"`
 	Video        *VideoInput        `json:"video_svc,omitempty"`
+	// Email creates an email service. It takes only a name; sending domains
+	// are added once it exists, with Services().Email(slug).AddDomain.
+	Email *EmailInput `json:"email_svc,omitempty"`
 }
 
 // VideoInput configures a video library on creation. Like a static site it runs
