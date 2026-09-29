@@ -772,6 +772,14 @@ type PublishStaticSiteArchiveInput struct {
 	Prune *bool `json:"prune,omitempty"`
 }
 
+// StagedArchiveUpload is a reserved archive key and the presigned URL to PUT
+// the .zip to. Pass Key to PublishStagedArchive once the upload has finished.
+type StagedArchiveUpload struct {
+	Key       string    `json:"key"`
+	URL       string    `json:"url"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
 // ArchivePublishOptions tunes PublishArchive.
 type ArchivePublishOptions struct {
 	// Prune removes objects the archive does not contain. Defaults to true.

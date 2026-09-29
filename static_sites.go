@@ -96,6 +96,28 @@ func (c *StaticSitesClient) PublishArchive(ctx context.Context, path string, opt
 		return nil, fmt.Errorf("%s is empty", path)
 	}
 
+	staged, err := c.StageArchiveUpload(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var body io.Reader = f
+	if opts.Progress != nil {
+		body = &progressReader{r: f, total: info.Size(), report: opts.Progress}
+	}
+	if err := c.putArchive(ctx, staged.URL, body, info.Size()); err != nil {
+		return nil, err
+	}
+
+	return c.PublishStagedArchive(ctx, PublishStaticSiteArchiveInput{Key: staged.Key, Prune: opts.Prune})
+}
+
+// StageArchiveUpload reserves a place in the site's bucket for an archive and
+// returns a presigned URL to PUT the .zip to. It is for a caller that cannot
+// hand the SDK a local file — such as an agent whose files live on another
+// machine — and uploads the bytes itself, then calls PublishStagedArchive with
+// the returned key.
+func (c *StaticSitesClient) StageArchiveUpload(ctx context.Context) (*StagedArchiveUpload, error) {
 	// A fresh key per publish: two deploys running at once must not stage over
 	// each other, and the server deletes the archive as soon as it has read it.
 	key, err := stagedArchiveKey()
@@ -106,16 +128,7 @@ func (c *StaticSitesClient) PublishArchive(ctx context.Context, path string, opt
 	if err != nil {
 		return nil, err
 	}
-
-	var body io.Reader = f
-	if opts.Progress != nil {
-		body = &progressReader{r: f, total: info.Size(), report: opts.Progress}
-	}
-	if err := c.putArchive(ctx, signed.URL, body, info.Size()); err != nil {
-		return nil, err
-	}
-
-	return c.PublishStagedArchive(ctx, PublishStaticSiteArchiveInput{Key: key, Prune: opts.Prune})
+	return &StagedArchiveUpload{Key: key, URL: signed.URL, ExpiresAt: signed.ExpiresAt}, nil
 }
 
 // PublishStagedArchive expands an archive already uploaded to the site's own
