@@ -542,13 +542,18 @@ type HTTPGatewayConfig struct {
 }
 
 // GatewayRoute forwards requests matching a path prefix to a backend service in
-// the same environment.
+// the same environment. The backend may be a static site, whose files are then
+// served on the gateway's hostnames: a frontend and its API on one origin.
 type GatewayRoute struct {
 	Slug       string `json:"slug"`
 	PathPrefix string `json:"path_prefix"`
 	// BackendSlug is the slug of the target service in the same environment.
 	BackendSlug string `json:"backend_slug"`
-	BackendPort uint   `json:"backend_port"`
+	// BackendPort is 0 for a static site, which has no port.
+	BackendPort uint `json:"backend_port"`
+	// BackendType is the target service's type, such as "static_site". Empty
+	// when no service in the environment has BackendSlug.
+	BackendType string `json:"backend_type,omitempty"`
 	// StripPrefix removes PathPrefix from the request path before forwarding.
 	StripPrefix bool `json:"strip_prefix"`
 	// Priority orders overlapping prefixes; higher wins.
@@ -556,6 +561,8 @@ type GatewayRoute struct {
 }
 
 // GatewayRouteInput is the request body for creating or updating a route.
+// BackendSlug must name a service in the gateway's environment. BackendPort is
+// required unless that service is a static site; a gateway serves at most one.
 type GatewayRouteInput struct {
 	PathPrefix  string `json:"path_prefix"`
 	BackendSlug string `json:"backend_slug"`
@@ -720,6 +727,10 @@ type StaticSiteInput struct {
 	// defaulting to IndexDocument. Pointing it at the index is what makes a
 	// client-side router work on deep links.
 	ErrorDocument string `json:"error_document,omitempty"`
+	// SPAFallback serves ErrorDocument with 200 rather than 404, for a
+	// single-page app whose routes exist only in the browser. Missing files
+	// under assets/ and static/ still return 404.
+	SPAFallback bool `json:"spa_fallback,omitempty"`
 }
 
 // StaticSite describes a static site service.
@@ -729,6 +740,9 @@ type StaticSite struct {
 	Status        string `json:"status"`
 	IndexDocument string `json:"index_document"`
 	ErrorDocument string `json:"error_document"`
+	// SPAFallback reports whether paths with no file are answered with
+	// ErrorDocument and 200, as a single-page app needs.
+	SPAFallback bool `json:"spa_fallback"`
 	// DefaultURL is the always-available platform URL for the site.
 	DefaultURL string `json:"default_url,omitempty"`
 	// CustomDomain is served once its DNS points at DomainCNAMETarget.
@@ -836,10 +850,14 @@ type StaticSiteFetchResult struct {
 	Files []StaticSiteFile `json:"files"`
 }
 
-// UpdateStaticSiteDocumentsInput sets the index and error documents.
+// UpdateStaticSiteDocumentsInput sets the index and error documents, and
+// optionally the single-page-app fallback.
 type UpdateStaticSiteDocumentsInput struct {
 	IndexDocument string `json:"index_document,omitempty"`
 	ErrorDocument string `json:"error_document,omitempty"`
+	// SPAFallback turns the single-page-app fallback on or off. Nil leaves the
+	// site's current setting as it is.
+	SPAFallback *bool `json:"spa_fallback,omitempty"`
 }
 
 // SetStaticSiteDomainInput attaches a custom domain; an empty value detaches
