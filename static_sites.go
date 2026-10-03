@@ -240,14 +240,53 @@ func (c *StaticSitesClient) SetDocuments(ctx context.Context, in UpdateStaticSit
 	return &site, nil
 }
 
-// SetCustomDomain attaches a custom domain to the site, or detaches the
-// current one when the domain is empty. After attaching, point the domain's
-// CNAME at the returned DomainCNAMETarget and deploy the service so the
-// platform starts routing it.
+// AddDomain attaches a custom domain to the site, alongside any it already
+// has; attaching one it already has changes nothing. A site can have up to
+// 20.
+//
+// After attaching, point the domain's CNAME at the returned DomainCNAMETarget
+// — unless its entry in CustomDomains has a DNSZone, in which case the
+// records were written for you — and deploy the service so the platform
+// starts routing it.
+func (c *StaticSitesClient) AddDomain(ctx context.Context, domain string) (*StaticSite, error) {
+	var site StaticSite
+	if err := c.services.client.post(ctx, c.base()+"/domains", AddStaticSiteDomainInput{Domain: domain}, &site); err != nil {
+		return nil, err
+	}
+	return &site, nil
+}
+
+// RemoveDomain detaches one of the site's custom domains, named by the domain
+// itself or by its slug. The site keeps serving on its other domains and its
+// platform URL; deploy the service to take down the routing for this one.
+func (c *StaticSitesClient) RemoveDomain(ctx context.Context, domainOrSlug string) (*StaticSite, error) {
+	var site StaticSite
+	if err := c.services.client.delete(ctx, c.base()+"/domains/"+url.PathEscape(domainOrSlug), &site); err != nil {
+		return nil, err
+	}
+	return &site, nil
+}
+
+// SetCustomDomain attaches a custom domain alongside any the site already
+// has, or detaches every one when the domain is empty.
+//
+// Deprecated: use AddDomain and RemoveDomain.
 func (c *StaticSitesClient) SetCustomDomain(ctx context.Context, domain string) (*StaticSite, error) {
 	var site StaticSite
 	if err := c.services.client.put(ctx, c.base()+"/domain", SetStaticSiteDomainInput{CustomDomain: domain}, &site); err != nil {
 		return nil, err
 	}
 	return &site, nil
+}
+
+// Domain returns the site's entry for name, or nil when it has no such
+// domain. Name is matched case-insensitively and without a trailing dot.
+func (s *StaticSite) Domain(name string) *StaticSiteDomain {
+	name = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(name)), ".")
+	for i := range s.CustomDomains {
+		if s.CustomDomains[i].Domain == name {
+			return &s.CustomDomains[i]
+		}
+	}
+	return nil
 }
