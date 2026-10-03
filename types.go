@@ -646,6 +646,10 @@ type FQDN struct {
 	CNAME      string `json:"cname,omitempty"`
 	Verified   bool   `json:"verified"`
 	CertStatus string `json:"cert_status,omitempty"`
+	// DNSZone is the workspace's own zone the domain's records are kept in,
+	// when it falls in one hosted on Simplifyd Cloud. The CNAME is then
+	// already in place and there is nothing to add.
+	DNSZone string `json:"dns_zone,omitempty"`
 }
 
 // ServiceConfig is a static file mounted into a service container.
@@ -746,12 +750,18 @@ type StaticSite struct {
 	// DefaultURL is the always-available platform URL for the site.
 	DefaultURL string `json:"default_url,omitempty"`
 	// CustomDomain is served once its DNS points at DomainCNAMETarget.
-	CustomDomain      string     `json:"custom_domain,omitempty"`
-	DomainStatus      string     `json:"domain_status,omitempty"`
-	DomainCNAMETarget string     `json:"domain_cname_target,omitempty"`
-	BytesUsed         int64      `json:"bytes_used"`
-	FileCount         int64      `json:"file_count"`
-	LastPublishedAt   *time.Time `json:"last_published_at,omitempty"`
+	CustomDomain      string `json:"custom_domain,omitempty"`
+	DomainStatus      string `json:"domain_status,omitempty"`
+	DomainCNAMETarget string `json:"domain_cname_target,omitempty"`
+	// DNSZone is the workspace's own zone the custom domain's records are
+	// kept in, when it falls in one hosted on Simplifyd Cloud: there is
+	// nothing to add. DNSError, on the response that set the domain, says why
+	// they could not be written there.
+	DNSZone         string     `json:"dns_zone,omitempty"`
+	DNSError        string     `json:"dns_error,omitempty"`
+	BytesUsed       int64      `json:"bytes_used"`
+	FileCount       int64      `json:"file_count"`
+	LastPublishedAt *time.Time `json:"last_published_at,omitempty"`
 }
 
 // StaticSiteFile is one file in a site publish. Content travels inline, so a
@@ -1264,6 +1274,12 @@ type VideoLibrary struct {
 	PlaybackDomain    string `json:"playback_domain,omitempty"`
 	DomainStatus      string `json:"domain_status,omitempty"`
 	DomainCNAMETarget string `json:"domain_cname_target,omitempty"`
+	// DNSZone is the workspace's own zone the playback domain's records are
+	// kept in, when it falls in one hosted on Simplifyd Cloud: there is
+	// nothing to add. DNSError, on the response that set the domain, says why
+	// they could not be written there.
+	DNSZone  string `json:"dns_zone,omitempty"`
+	DNSError string `json:"dns_error,omitempty"`
 	// MaxHeight is the tallest rung the ladder may produce, 720 by default.
 	MaxHeight int `json:"max_height"`
 	// KeepOriginal decides whether a video can be re-encoded, or its poster
