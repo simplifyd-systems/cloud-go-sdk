@@ -749,15 +749,22 @@ type StaticSite struct {
 	SPAFallback bool `json:"spa_fallback"`
 	// DefaultURL is the always-available platform URL for the site.
 	DefaultURL string `json:"default_url,omitempty"`
-	// CustomDomain is served once its DNS points at DomainCNAMETarget.
-	CustomDomain      string `json:"custom_domain,omitempty"`
-	DomainStatus      string `json:"domain_status,omitempty"`
+	// CustomDomains are the site's own domains, oldest first. Each is served
+	// once its DNS points at DomainCNAMETarget and the site has been deployed.
+	CustomDomains []StaticSiteDomain `json:"custom_domains,omitempty"`
+	// DomainCNAMETarget is what each custom domain's CNAME must point at.
 	DomainCNAMETarget string `json:"domain_cname_target,omitempty"`
-	// DNSZone is the workspace's own zone the custom domain's records are
-	// kept in, when it falls in one hosted on Simplifyd Cloud: there is
-	// nothing to add. DNSError, on the response that set the domain, says why
-	// they could not be written there.
-	DNSZone         string     `json:"dns_zone,omitempty"`
+	// CustomDomain, DomainStatus, DNSZone and DNSError describe a single
+	// domain, from before a site could have several: on a read, the oldest;
+	// on the response to SetCustomDomain, the domain just attached.
+	//
+	// Deprecated: use CustomDomains.
+	CustomDomain string `json:"custom_domain,omitempty"`
+	// Deprecated: use CustomDomains.
+	DomainStatus string `json:"domain_status,omitempty"`
+	// Deprecated: use CustomDomains.
+	DNSZone string `json:"dns_zone,omitempty"`
+	// Deprecated: use CustomDomains.
 	DNSError        string     `json:"dns_error,omitempty"`
 	BytesUsed       int64      `json:"bytes_used"`
 	FileCount       int64      `json:"file_count"`
@@ -870,10 +877,32 @@ type UpdateStaticSiteDocumentsInput struct {
 	SPAFallback *bool `json:"spa_fallback,omitempty"`
 }
 
-// SetStaticSiteDomainInput attaches a custom domain; an empty value detaches
-// the current one.
+// SetStaticSiteDomainInput attaches a custom domain alongside any the site
+// already has; an empty value detaches every one.
 type SetStaticSiteDomainInput struct {
 	CustomDomain string `json:"custom_domain"`
+}
+
+// AddStaticSiteDomainInput attaches one more custom domain to a site.
+type AddStaticSiteDomainInput struct {
+	Domain string `json:"domain"`
+}
+
+// StaticSiteDomain is one of a static site's custom domains.
+type StaticSiteDomain struct {
+	Slug   string `json:"slug"`
+	Domain string `json:"domain"`
+	// Status is "active" once the platform resolves the domain to the site,
+	// and "pending" before. HTTPS also needs the domain's DNS pointed and the
+	// site deployed.
+	Status string `json:"status"`
+	// DNSZone is the workspace's own zone the domain's records are kept in,
+	// when it falls in one hosted on Simplifyd Cloud: there is nothing to add.
+	// DNSError, on the response that attached the domain, says why they could
+	// not be written there.
+	DNSZone   string    `json:"dns_zone,omitempty"`
+	DNSError  string    `json:"dns_error,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // S3BucketInput configures an S3-compatible bucket service on creation.
