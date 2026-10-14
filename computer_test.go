@@ -72,3 +72,28 @@ func TestComputerClientRequests(t *testing.T) {
 		t.Errorf("bash call = %+v", calls[3])
 	}
 }
+
+func TestVMStartStop(t *testing.T) {
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.Method+" "+r.URL.Path)
+		_, _ = w.Write([]byte(`{"success":true}`))
+	}))
+	defer srv.Close()
+
+	ctx := context.Background()
+	svcs := NewClient(WithBaseURL(srv.URL), WithToken("t")).Workspace("ws").Project("p").Env("e").Services()
+	if err := svcs.StopVM(ctx, "m"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svcs.StartVM(ctx, "m"); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"POST /v1/workspaces/ws/projects/p/envs/e/svcs/m/vm/stop",
+		"POST /v1/workspaces/ws/projects/p/envs/e/svcs/m/vm/start",
+	}
+	if len(paths) != 2 || paths[0] != want[0] || paths[1] != want[1] {
+		t.Errorf("calls = %v", paths)
+	}
+}

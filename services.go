@@ -80,6 +80,19 @@ func (s *ServicesClient) Delete(ctx context.Context, svcSlug string) error {
 	return s.client.delete(ctx, s.svcPath(svcSlug), nil)
 }
 
+// StopVM shuts down a virtual machine. Its disk is kept, and storage keeps
+// billing while it is stopped; compute does not.
+func (s *ServicesClient) StopVM(ctx context.Context, svcSlug string) error {
+	return s.client.post(ctx, s.svcPath(svcSlug)+"/vm/stop", nil, nil)
+}
+
+// StartVM boots a stopped virtual machine from the disk it was stopped with.
+// A desktop machine's screen and computer API are usually ready one to two
+// minutes later; until then they return 503.
+func (s *ServicesClient) StartVM(ctx context.Context, svcSlug string) error {
+	return s.client.post(ctx, s.svcPath(svcSlug)+"/vm/start", nil, nil)
+}
+
 // CreatePostgresBackup starts an on-demand base backup for a Postgres service.
 // The service must have a configured backup destination and a ready Barman
 // plugin. The returned run can be correlated with the service backup status.

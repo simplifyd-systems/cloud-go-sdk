@@ -730,8 +730,8 @@ type VMInput struct {
 	// StorageGB is the boot disk size: 10 to 200, and at least 20 for
 	// VMImageDesktop.
 	StorageGB uint `json:"storage_gb"`
-	// SSHAuthorizedKeys are installed for the image's default user. At least
-	// one is required.
+	// SSHAuthorizedKeys are installed for the image's default user: 1 to 10
+	// keys, except for VMImageDesktop, where they are optional.
 	SSHAuthorizedKeys []string `json:"ssh_authorized_keys"`
 }
 
