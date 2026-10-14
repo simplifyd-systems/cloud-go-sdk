@@ -1313,16 +1313,22 @@ type VideoLibrary struct {
 	MaxHeight int `json:"max_height"`
 	// KeepOriginal decides whether a video can be re-encoded, or its poster
 	// changed, without being uploaded again.
-	KeepOriginal bool      `json:"keep_original"`
-	VideoCount   int64     `json:"video_count"`
-	BytesUsed    int64     `json:"bytes_used"`
-	CreatedAt    time.Time `json:"created_at"`
+	KeepOriginal bool `json:"keep_original"`
+	// DatafreeBadge is whether the player shows a "Datafree" badge over the
+	// library's videos. On by default.
+	DatafreeBadge bool      `json:"datafree_badge"`
+	VideoCount    int64     `json:"video_count"`
+	BytesUsed     int64     `json:"bytes_used"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
-// UpdateVideoLibraryInput changes a library's encoding settings.
+// UpdateVideoLibraryInput changes a library's encoding and player settings.
 type UpdateVideoLibraryInput struct {
 	MaxHeight    int  `json:"max_height"`
 	KeepOriginal bool `json:"keep_original"`
+	// DatafreeBadge shows or hides the player's "Datafree" badge, on every
+	// video already published as well as new ones. Nil leaves it as it is.
+	DatafreeBadge *bool `json:"datafree_badge,omitempty"`
 }
 
 // SetVideoPlaybackDomainInput attaches a custom playback hostname. An empty
