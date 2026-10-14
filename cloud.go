@@ -284,6 +284,7 @@ func (c *Client) doRequest(req *http.Request, out interface{}) error {
 		var apiErr APIError
 		if json.Unmarshal(bodyBytes, &apiErr) == nil && apiErr.Message != "" {
 			apiErr.StatusCode = resp.StatusCode
+			apiErr.body = bodyBytes
 			return &apiErr
 		}
 		return &APIError{
