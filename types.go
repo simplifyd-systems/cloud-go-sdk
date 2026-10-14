@@ -213,7 +213,7 @@ const (
 )
 
 // VM images. VMImageDesktop is the one with a screen: it boots signed in to
-// an Xfce desktop with Chrome, and serves the computer API.
+// an Xfce desktop with Firefox, and serves the computer API.
 const (
 	VMImageUbuntu2204 = "ubuntu-22.04"
 	VMImageUbuntu2404 = "ubuntu-24.04"

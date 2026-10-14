@@ -127,7 +127,7 @@ func (c *ComputerClient) Wait(ctx context.Context, d time.Duration) error {
 // and with access to the display, so it can launch programs onto the screen.
 // timeout is capped at 10 minutes; zero means one minute.
 //
-// A program started in the background (`google-chrome &`) keeps running after
+// A program started in the background (`firefox &`) keeps running after
 // Bash returns.
 func (c *ComputerClient) Bash(ctx context.Context, command string, timeout time.Duration) (*CommandResult, error) {
 	return c.command(ctx, "bash", map[string]any{"command": command}, timeout)
