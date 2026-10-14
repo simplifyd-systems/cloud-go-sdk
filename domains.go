@@ -123,6 +123,20 @@ type RegisterDomainInput struct {
 	// Registrant overrides the workspace's saved registrant for this purchase.
 	// Leave it nil to use the saved one, which is what the console does.
 	Registrant *DomainContact `json:"registrant,omitempty"`
+	// ConfirmTotal is the total agreed to, VAT included, in centiKobo: a
+	// quote's Total. The wallet is charged only if it is the price at that
+	// moment; otherwise Register returns a *PriceConfirmationError and charges
+	// nothing. Required with a workspace token.
+	ConfirmTotal *int64 `json:"confirm_total,omitempty"`
+}
+
+// RenewDomainOptions renews a domain.
+type RenewDomainOptions struct {
+	// Years defaults to 1, and can be at most 10.
+	Years int `json:"years,omitempty"`
+	// ConfirmTotal works as it does in RegisterDomainInput. Required with a
+	// workspace token.
+	ConfirmTotal *int64 `json:"confirm_total,omitempty"`
 }
 
 // UpdateDomainInput changes a domain's settings. Nil fields are left alone.
@@ -213,12 +227,15 @@ func (d *DomainsClient) SetRegistrant(ctx context.Context, c DomainContact) (*Do
 // nothing, if none is saved. The returned domain
 // may still be "registering": it is paid for, and the registration completes
 // in the background. If the registrar refuses it, the wallet is refunded.
+//
+// A price that was not confirmed returns a *PriceConfirmationError; see
+// RegisterDomainInput.ConfirmTotal.
 func (d *DomainsClient) Register(ctx context.Context, input RegisterDomainInput) (*Domain, error) {
 	var out struct {
 		Domain Domain `json:"domain"`
 	}
 	if err := d.client.post(ctx, d.base(), input, &out); err != nil {
-		return nil, err
+		return nil, priceConfirmation(err)
 	}
 	return &out.Domain, nil
 }
@@ -246,13 +263,21 @@ func (d *DomainsClient) Update(ctx context.Context, slug string, input UpdateDom
 }
 
 // Renew extends a domain by years (1 when zero), charging the wallet now.
+// It cannot be used with a workspace token, which must confirm the price:
+// use RenewWithOptions.
 func (d *DomainsClient) Renew(ctx context.Context, slug string, years int) (*Domain, error) {
+	return d.RenewWithOptions(ctx, slug, RenewDomainOptions{Years: years})
+}
+
+// RenewWithOptions extends a domain, charging the wallet now. A price that
+// was not confirmed returns a *PriceConfirmationError; see
+// RenewDomainOptions.ConfirmTotal.
+func (d *DomainsClient) RenewWithOptions(ctx context.Context, slug string, opts RenewDomainOptions) (*Domain, error) {
 	var out struct {
 		Domain Domain `json:"domain"`
 	}
-	body := map[string]int{"years": years}
-	if err := d.client.post(ctx, d.base()+"/"+slug+"/renew", body, &out); err != nil {
-		return nil, err
+	if err := d.client.post(ctx, d.base()+"/"+slug+"/renew", opts, &out); err != nil {
+		return nil, priceConfirmation(err)
 	}
 	return &out.Domain, nil
 }
