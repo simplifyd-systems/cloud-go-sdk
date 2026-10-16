@@ -206,6 +206,20 @@ const (
 	// the service publishes, once a sending domain is verified. Billed per
 	// email delivered.
 	ServiceTypeEmail ServiceType = "email"
+	// ServiceTypeVM is a virtual machine: a whole guest OS on the project's
+	// private network. With VMImageDesktop it boots to a desktop that an AI
+	// agent can drive through Services().Computer(slug).
+	ServiceTypeVM ServiceType = "vm"
+)
+
+// VM images. VMImageDesktop is the one with a screen: it boots signed in to
+// an Xfce desktop with Firefox, and serves the computer API.
+const (
+	VMImageUbuntu2204 = "ubuntu-22.04"
+	VMImageUbuntu2404 = "ubuntu-24.04"
+	VMImageDebian12   = "debian-12"
+	VMImageRocky9     = "rocky-9"
+	VMImageDesktop    = "ubuntu-24.04-desktop"
 )
 
 // ServiceStatus is the current lifecycle state of a service.
@@ -239,6 +253,9 @@ type Service struct {
 	HTTPGateway  *HTTPGatewayConfig  `json:"http_gateway_svc,omitempty"`
 	IPsecGateway *IPsecGatewayConfig `json:"ipsec_gateway_svc,omitempty"`
 	Email        *EmailConfig        `json:"email_svc,omitempty"`
+	// VM is set on every service the API returns; its Image is empty unless
+	// the service is a VM.
+	VM *VMConfig `json:"kubevirt_vm_svc,omitempty"`
 
 	Variables           []Variable           `json:"variables,omitempty"`
 	Ingress             []IngressPort        `json:"ingress_ports,omitempty"`
@@ -701,7 +718,33 @@ type CreateServiceInput struct {
 	// Email creates an email service. It takes only a name; sending domains
 	// are added once it exists, with Services().Email(slug).AddDomain.
 	Email *EmailInput `json:"email_svc,omitempty"`
+	// VM creates a virtual machine. Use VMImageDesktop for a machine an AI
+	// agent can use as its computer.
+	VM *VMInput `json:"kubevirt_vm_svc,omitempty"`
 }
+
+// VMInput configures a virtual machine on creation.
+type VMInput struct {
+	// Image is one of the VMImage constants.
+	Image string `json:"image"`
+	// StorageGB is the boot disk size: 10 to 200, and at least 20 for
+	// VMImageDesktop.
+	StorageGB uint `json:"storage_gb"`
+	// SSHAuthorizedKeys are installed for the image's default user: 1 to 10
+	// keys, except for VMImageDesktop, where they are optional.
+	SSHAuthorizedKeys []string `json:"ssh_authorized_keys"`
+}
+
+// VMConfig is a virtual machine's configuration as the API reports it.
+type VMConfig struct {
+	Image             string   `json:"image"`
+	StorageGB         uint     `json:"storage_gb,omitempty"`
+	SSHAuthorizedKeys []string `json:"ssh_authorized_keys,omitempty"`
+}
+
+// HasDesktop reports whether the machine boots to a desktop and serves the
+// computer API.
+func (v *VMConfig) HasDesktop() bool { return v != nil && v.Image == VMImageDesktop }
 
 // VideoInput configures a video library on creation. Like a static site it runs
 // no container, so image, resources and replicas do not apply — the work is
