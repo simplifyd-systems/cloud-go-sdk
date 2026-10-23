@@ -67,13 +67,18 @@ func (i *IngressClient) SetSourceRanges(ctx context.Context, ingressSlug string,
 	return i.client.put(ctx, i.base()+"/"+ingressSlug+"/source-ranges", body, nil)
 }
 
-// Delete removes an ingress port by its slug.
+// Delete sends the same request as DeleteFQDN; its argument is a hostname or a
+// custom domain's slug, not an ingress port's slug.
+//
+// Deprecated: use DeleteFQDN.
 func (i *IngressClient) Delete(ctx context.Context, ingressSlug string) error {
 	return i.client.delete(ctx, i.base()+"/"+ingressSlug, nil)
 }
 
-// DeleteFQDN removes a custom FQDN (vanity domain) from a service.
-// fqdn is the domain string (e.g. "api.example.com"), not a slug.
+// DeleteFQDN removes a hostname from a service. fqdn is the service's vanity
+// name, or a custom domain given by its name (e.g. "api.example.com") or its
+// slug. Removing the last hostname on a port removes the port. A value that
+// matches none of them is an error (404).
 func (i *IngressClient) DeleteFQDN(ctx context.Context, fqdn string) error {
 	path := fmt.Sprintf("/v1/workspaces/%s/projects/%s/envs/%s/svcs/%s/ingress/%s",
 		i.workspace, i.project, i.env, i.svc, fqdn)
