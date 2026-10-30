@@ -101,6 +101,37 @@ type Registry struct {
 	RegistryURL     string `json:"registry_url"`
 }
 
+// WorkspaceRegistryCredential is a workspace's pull credential for a private
+// container registry. The password is write-only and never returned.
+type WorkspaceRegistryCredential struct {
+	Slug string `json:"slug"`
+	// RegistryHost is the normalised registry host, e.g. "ghcr.io", or
+	// "docker.io" for Docker Hub.
+	RegistryHost string    `json:"registry_host"`
+	Username     string    `json:"username"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// CreateRegistryCredentialInput is the request body for adding a workspace
+// registry credential.
+type CreateRegistryCredentialInput struct {
+	// RegistryHost is the registry's hostname, e.g. "ghcr.io". A URL or a
+	// path after the host is accepted and reduced to the host.
+	RegistryHost string `json:"registry_host"`
+	Username     string `json:"username"`
+	// Password is the registry password or access token. A read-only token
+	// scoped to pulling is enough.
+	Password string `json:"password"`
+}
+
+// UpdateRegistryCredentialInput is the request body for changing a workspace
+// registry credential. An empty field keeps its current value.
+type UpdateRegistryCredentialInput struct {
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+}
+
 // RegistryCredentials contains push/pull credentials for the workspace registry.
 type RegistryCredentials struct {
 	RegistryURL string `json:"registry_url"`
@@ -289,13 +320,33 @@ type CreatePrivateAccessGrantInput struct {
 
 // DockerConfig holds configuration for a Docker service.
 type DockerConfig struct {
-	Image                  string   `json:"image"`
-	Tag                    string   `json:"tag"`
-	RegistryUsername       string   `json:"registry_username,omitempty"`
-	HasRegistryCredentials bool     `json:"has_registry_credentials,omitempty"`
-	StartCommand           string   `json:"start_command,omitempty"`
-	StartCommandArgs       []string `json:"start_command_args,omitempty"`
+	Image string `json:"image"`
+	Tag   string `json:"tag"`
+	// RegistryUsername and HasRegistryCredentials describe the service's own
+	// registry credentials, if it has any.
+	RegistryUsername       string `json:"registry_username,omitempty"`
+	HasRegistryCredentials bool   `json:"has_registry_credentials,omitempty"`
+	// RegistryHost is the normalised registry the image pulls from, e.g.
+	// "ghcr.io", or "docker.io" for Docker Hub.
+	RegistryHost string `json:"registry_host,omitempty"`
+	// RegistryCredentialSource says which credentials the image pulls with:
+	// one of the RegistryCredentialSource constants.
+	RegistryCredentialSource string   `json:"registry_credential_source,omitempty"`
+	StartCommand             string   `json:"start_command,omitempty"`
+	StartCommandArgs         []string `json:"start_command_args,omitempty"`
 }
+
+// Values of DockerConfig.RegistryCredentialSource.
+const (
+	// RegistryCredentialSourceService: the service's own registry credentials.
+	RegistryCredentialSourceService = "service"
+	// RegistryCredentialSourceWorkspace: the workspace's credential for the
+	// image's registry host.
+	RegistryCredentialSourceWorkspace = "workspace"
+	// RegistryCredentialSourceNone: no credentials; the image is pulled
+	// anonymously, or with platform credentials on sdcr.io.
+	RegistryCredentialSourceNone = "none"
+)
 
 // PostgresConfig holds configuration for a managed PostgreSQL service.
 type PostgresConfig struct {
