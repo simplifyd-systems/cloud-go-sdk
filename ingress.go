@@ -23,6 +23,11 @@ func (i *IngressClient) base() string {
 // Add creates a new ingress port on the service.
 // Protocol must be one of "HTTP", "gRPC", or "TCP".
 // A vanity FQDN is automatically assigned; optionally provide a CustomFQDN.
+//
+// A custom domain is not routed until it is verified: publish the TXT record
+// in its Verification (on the port's CustomFQDNs entry) as well as pointing
+// its CNAME at the entry's CNAME, unless DNSZone says the records were written
+// for you. ServicesClient.CheckDomainVerification checks it straight away.
 func (i *IngressClient) Add(ctx context.Context, in AddIngressInput) (*IngressPort, error) {
 	var port IngressPort
 	if err := i.client.post(ctx, i.base(), in, &port); err != nil {
