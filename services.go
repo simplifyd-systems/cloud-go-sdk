@@ -322,6 +322,25 @@ func (s *ServicesClient) DeletePostgresUser(ctx context.Context, svcSlug, userna
 	return s.client.delete(ctx, s.postgresPath(svcSlug, "/users/"+url.PathEscape(username)), nil)
 }
 
+// ── custom domains ────────────────────────────────────────────────────────────
+
+// CheckDomainVerification looks for one of a service's custom domains'
+// verification TXT record now, rather than at the next background check. It
+// works for any custom domain the service has: an HTTP service's or gateway's
+// hostname, or a static site's, bucket's or video library's domain.
+//
+// Once the record is found the domain is verified and goes live without a
+// deploy; if another workspace was serving it and can no longer prove
+// control, it moves to this one. A domain still pending has LastError saying
+// why.
+func (s *ServicesClient) CheckDomainVerification(ctx context.Context, svcSlug, domain string) (*DomainVerification, error) {
+	var v DomainVerification
+	if err := s.client.post(ctx, s.svcPath(svcSlug)+"/domains/verify", CheckDomainVerificationInput{Domain: domain}, &v); err != nil {
+		return nil, err
+	}
+	return &v, nil
+}
+
 // ── deployments ───────────────────────────────────────────────────────────────
 
 // Deploy creates a new deployment (first deploy or deploy after config changes).

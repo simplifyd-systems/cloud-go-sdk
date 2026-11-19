@@ -284,6 +284,9 @@ type Service struct {
 	HTTPGateway  *HTTPGatewayConfig  `json:"http_gateway_svc,omitempty"`
 	IPsecGateway *IPsecGatewayConfig `json:"ipsec_gateway_svc,omitempty"`
 	Email        *EmailConfig        `json:"email_svc,omitempty"`
+	// S3Bucket is the bucket's configuration. The API sends the object for
+	// every service, so check Type is ServiceTypeS3Bucket before using it.
+	S3Bucket *S3Bucket `json:"s3_bucket_svc,omitempty"`
 	// VM is set on every service the API returns; its Image is empty unless
 	// the service is a VM.
 	VM *VMConfig `json:"kubevirt_vm_svc,omitempty"`
@@ -718,6 +721,10 @@ type FQDN struct {
 	// when it falls in one hosted on Simplifyd Cloud. The CNAME is then
 	// already in place and there is nothing to add.
 	DNSZone string `json:"dns_zone,omitempty"`
+	// Verification is how the workspace proves the domain is its own. The
+	// domain is not routed, and gets no certificate, until it is verified.
+	// Nil from an API that predates domain verification.
+	Verification *DomainVerification `json:"verification,omitempty"`
 }
 
 // ServiceConfig is a static file mounted into a service container.
@@ -997,6 +1004,106 @@ type StaticSiteDomain struct {
 	DNSZone   string    `json:"dns_zone,omitempty"`
 	DNSError  string    `json:"dns_error,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
+	// Verification is how the workspace proves the domain is its own. The
+	// domain is not served until it is verified. Nil from an API that
+	// predates domain verification.
+	Verification *DomainVerification `json:"verification,omitempty"`
+}
+
+// DomainVerificationStatus is how far a workspace has got in proving it
+// controls one of its custom domains.
+type DomainVerificationStatus string
+
+const (
+	// DomainVerificationPending: nothing serves the domain yet. Publish the
+	// TXT record, or host the domain's DNS zone on Simplifyd Cloud.
+	DomainVerificationPending DomainVerificationStatus = "pending"
+	// DomainVerificationVerified: the domain is the workspace's, and live.
+	DomainVerificationVerified DomainVerificationStatus = "verified"
+)
+
+// DomainVerification is what the workspace must do, or has done, to prove a
+// custom domain is its own. Every custom domain — a service's or gateway's
+// hostname, a static site's, bucket's or video library's domain — carries
+// one, and is not served until its Status is verified.
+//
+// To verify a domain, publish a TXT record named RecordName with the value
+// RecordValue at your DNS provider. The platform checks pending domains in
+// the background until AutoCheckUntil; ServicesClient.CheckDomainVerification
+// checks one straight away. A domain in a DNS zone the workspace hosts on
+// Simplifyd Cloud, and that is delegated here, is verified automatically.
+//
+// Several workspaces may add the same hostname, but only one can verify it.
+// Proving control of a hostname another workspace verified earlier, and can
+// no longer prove control of, moves it to this workspace.
+type DomainVerification struct {
+	Hostname string                   `json:"hostname"`
+	Status   DomainVerificationStatus `json:"status"`
+	// RecordType, RecordName and RecordValue are the record to publish:
+	// "TXT", "_simplifyd-verify.<hostname>" (a wildcard *.example.com is
+	// verified at _simplifyd-verify.example.com) and
+	// "simplifyd-verify=<token>".
+	RecordType    string     `json:"record_type"`
+	RecordName    string     `json:"record_name"`
+	RecordValue   string     `json:"record_value"`
+	VerifiedAt    *time.Time `json:"verified_at,omitempty"`
+	LastCheckedAt *time.Time `json:"last_checked_at,omitempty"`
+	// LastError is why the last check did not verify the domain.
+	LastError string `json:"last_error,omitempty"`
+	// AutoCheckUntil is when background checks stop for a pending domain.
+	// After that only CheckDomainVerification checks it.
+	AutoCheckUntil *time.Time `json:"auto_check_until,omitempty"`
+}
+
+// Verified reports whether the domain has been verified. A nil verification,
+// from an API that predates domain verification, counts as verified: such an
+// API serves every domain without one.
+func (v *DomainVerification) Verified() bool {
+	return v == nil || v.Status == DomainVerificationVerified
+}
+
+// CheckDomainVerificationInput names the custom domain to check.
+type CheckDomainVerificationInput struct {
+	Domain string `json:"domain"`
+}
+
+// S3Bucket is an S3-compatible bucket service's configuration.
+type S3Bucket struct {
+	DisplayName    string `json:"display_name"`
+	BucketName     string `json:"bucket_name"`
+	EndpointURL    string `json:"endpoint_url,omitempty"`
+	Region         string `json:"region"`
+	AccessKeyID    string `json:"access_key_id,omitempty"`
+	HasCredentials bool   `json:"has_credentials"`
+	Status         string `json:"status"`
+	BytesUsed      int64  `json:"bytes_used"`
+	ObjectCount    int64  `json:"object_count"`
+	// Public reports whether anonymous (unauthenticated) reads are on.
+	Public bool `json:"public"`
+	// PublicURL is the anonymous-read base URL, set when Public is true.
+	PublicURL string `json:"public_url,omitempty"`
+	// CustomDomains are your own domains the bucket's objects are served on,
+	// anonymously, exactly as on PublicURL. Only a public bucket can have
+	// them.
+	CustomDomains []StaticSiteDomain `json:"custom_domains,omitempty"`
+	// DomainCNAMETarget is the value each custom domain's CNAME must point at.
+	DomainCNAMETarget string `json:"domain_cname_target,omitempty"`
+}
+
+// Domain returns the bucket's entry for name, or nil when it has no such
+// domain. Name is matched case-insensitively and without a trailing dot.
+func (b *S3Bucket) Domain(name string) *StaticSiteDomain {
+	return findDomain(b.CustomDomains, name)
+}
+
+// SetS3BucketPublicAccessInput turns anonymous reads on a bucket on or off.
+type SetS3BucketPublicAccessInput struct {
+	Public bool `json:"public"`
+}
+
+// AddS3BucketDomainInput attaches one more custom domain to a public bucket.
+type AddS3BucketDomainInput struct {
+	Domain string `json:"domain"`
 }
 
 // S3BucketInput configures an S3-compatible bucket service on creation.
@@ -1393,7 +1500,8 @@ type VideoLibrary struct {
 	// resolves to the zero-rated ingress address, which is what makes watching
 	// free to the viewer.
 	PlaybackURL string `json:"playback_url,omitempty"`
-	// PlaybackDomain is served once its DNS points at DomainCNAMETarget.
+	// PlaybackDomain is served once it is verified and its DNS points at
+	// DomainCNAMETarget.
 	PlaybackDomain    string `json:"playback_domain,omitempty"`
 	DomainStatus      string `json:"domain_status,omitempty"`
 	DomainCNAMETarget string `json:"domain_cname_target,omitempty"`
@@ -1403,6 +1511,10 @@ type VideoLibrary struct {
 	// they could not be written there.
 	DNSZone  string `json:"dns_zone,omitempty"`
 	DNSError string `json:"dns_error,omitempty"`
+	// Verification is how the workspace proves PlaybackDomain is its own.
+	// The domain is not served until it is verified. Nil when the library
+	// has no playback domain, or from an API that predates verification.
+	Verification *DomainVerification `json:"verification,omitempty"`
 	// MaxHeight is the tallest rung the ladder may produce, 720 by default.
 	MaxHeight int `json:"max_height"`
 	// KeepOriginal decides whether a video can be re-encoded, or its poster

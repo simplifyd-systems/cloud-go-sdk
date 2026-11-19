@@ -244,10 +244,12 @@ func (c *StaticSitesClient) SetDocuments(ctx context.Context, in UpdateStaticSit
 // has; attaching one it already has changes nothing. A site can have up to
 // 20.
 //
-// After attaching, point the domain's CNAME at the returned DomainCNAMETarget
-// — unless its entry in CustomDomains has a DNSZone, in which case the
-// records were written for you — and deploy the service so the platform
-// starts routing it.
+// After attaching, publish the TXT record in the domain's Verification and
+// point its CNAME at the returned DomainCNAMETarget — unless its entry in
+// CustomDomains has a DNSZone, in which case the records were written for
+// you — and deploy the service so the platform starts routing it. The domain
+// is not served until it is verified; CheckDomainVerification checks it
+// straight away.
 func (c *StaticSitesClient) AddDomain(ctx context.Context, domain string) (*StaticSite, error) {
 	var site StaticSite
 	if err := c.services.client.post(ctx, c.base()+"/domains", AddStaticSiteDomainInput{Domain: domain}, &site); err != nil {
@@ -282,10 +284,14 @@ func (c *StaticSitesClient) SetCustomDomain(ctx context.Context, domain string) 
 // Domain returns the site's entry for name, or nil when it has no such
 // domain. Name is matched case-insensitively and without a trailing dot.
 func (s *StaticSite) Domain(name string) *StaticSiteDomain {
+	return findDomain(s.CustomDomains, name)
+}
+
+func findDomain(domains []StaticSiteDomain, name string) *StaticSiteDomain {
 	name = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(name)), ".")
-	for i := range s.CustomDomains {
-		if s.CustomDomains[i].Domain == name {
-			return &s.CustomDomains[i]
+	for i := range domains {
+		if domains[i].Domain == name {
+			return &domains[i]
 		}
 	}
 	return nil

@@ -68,9 +68,12 @@ func (c *VideosClient) Update(ctx context.Context, in UpdateVideoLibraryInput) (
 // SetPlaybackDomain attaches a custom playback domain, or detaches the current
 // one when the domain is empty.
 //
-// After attaching, point the domain's CNAME at the returned DomainCNAMETarget.
-// Until it resolves, playback stays on the platform hostname — which is on the
-// same zero-rated address, so nothing is metered in the meantime.
+// After attaching, publish the TXT record in the returned Verification and
+// point the domain's CNAME at DomainCNAMETarget, unless DNSZone says the
+// records were written for you. The domain is not served until it is
+// verified; ServicesClient.CheckDomainVerification checks it straight away.
+// Until then playback stays on the platform hostname — which is on the same
+// zero-rated address, so nothing is metered in the meantime.
 func (c *VideosClient) SetPlaybackDomain(ctx context.Context, domain string) (*VideoLibrary, error) {
 	var lib VideoLibrary
 	if err := c.services.client.put(ctx, c.base()+"/domain",
