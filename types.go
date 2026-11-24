@@ -840,11 +840,14 @@ type StaticSiteInput struct {
 
 // StaticSite describes a static site service.
 type StaticSite struct {
-	DisplayName   string `json:"display_name"`
-	BucketName    string `json:"bucket_name"`
-	Status        string `json:"status"`
-	IndexDocument string `json:"index_document"`
-	ErrorDocument string `json:"error_document"`
+	ReleasePublishingEnabled bool    `json:"release_publishing_enabled"`
+	ReleasesEnabled          bool    `json:"releases_enabled"`
+	ActiveRelease            *string `json:"active_release,omitempty"`
+	DisplayName              string  `json:"display_name"`
+	BucketName               string  `json:"bucket_name"`
+	Status                   string  `json:"status"`
+	IndexDocument            string  `json:"index_document"`
+	ErrorDocument            string  `json:"error_document"`
 	// SPAFallback reports whether paths with no file are answered with
 	// ErrorDocument and 200, as a single-page app needs.
 	SPAFallback bool `json:"spa_fallback"`
@@ -928,11 +931,12 @@ type PresignedUpload struct {
 
 // StaticSitePublishResult reports what a publish changed.
 type StaticSitePublishResult struct {
-	FilesUploaded int      `json:"files_uploaded"`
-	FilesDeleted  int      `json:"files_deleted"`
-	BytesUploaded int64    `json:"bytes_uploaded"`
-	URL           string   `json:"url,omitempty"`
-	Paths         []string `json:"paths,omitempty"`
+	Release       *StaticSiteRelease `json:"release,omitempty"`
+	FilesUploaded int                `json:"files_uploaded"`
+	FilesDeleted  int                `json:"files_deleted"`
+	BytesUploaded int64              `json:"bytes_uploaded"`
+	URL           string             `json:"url,omitempty"`
+	Paths         []string           `json:"paths,omitempty"`
 	// FilesSkipped counts archive entries left out as archiver metadata
 	// (__MACOSX, .DS_Store and the like). Archive publishes only.
 	FilesSkipped int `json:"files_skipped,omitempty"`
